@@ -11,7 +11,7 @@
 <body>
 <div id="root"></div>
 <script>
-if(!window.storage){const mem={};window.storage={get:async k=>(k in mem?{key:k,value:mem[k]}:(()=>{throw new Error("not found")})()),set:async(k,v)=>{mem[k]=v;return{key:k,value:v};},delete:async k=>{delete mem[k];return{key:k,deleted:true};},list:async()=>({keys:Object.keys(mem)})};};
+if(!window.storage){const mem={};window.storage={get:async k=>(k in mem?{key:k,value:mem[k]}:(()=>{throw new Error("not found")})()),set:async(k,v)=>{mem[k]=v;return{key:k,value:v};},delete:async k=>{delete mem[k];return{key:k,deleted:true};},list:async()=>({keys:Object.keys(mem)})}}
 </script>
 <script>
 const {
@@ -1517,10 +1517,17 @@ const hasClinchedTop2 = (team, stats, standings, groupMatches) => {
   // accounted for in the standings and cannot be "new" threats to a top-2 finish.
   const threats = st.slice(myPos + 1).filter(t => {
     const ts = stats[t];
-    const ceiling = ts.pts + (3 - ts.mp) * 3;
+    const rem = 3 - ts.mp;
+    const ceiling = ts.pts + rem * 3;
     if (ceiling < myFloor) return false;
     if (ceiling > myFloor) return true;
-    // Exact tie scenario: check head-to-head (FIFA 2026 Article 13)
+    // ceiling === myFloor: tied on points.
+    // If the rival has NO remaining matches (rem === 0), their position is permanently
+    // locked. Since we're only looking at teams already ranked below (st.slice), and
+    // the standings already applied all tiebreakers (h2h, GD, GF), a rival with no
+    // games left who is ranked below CANNOT overtake. Not a threat.
+    if (rem === 0) return false;
+    // Rival still has games remaining — check head-to-head (FIFA 2026 Article 13)
     const h2h = h2hCompare(s.group, team, t, groupMatches);
     return h2h <= 0;
   }).length;
@@ -1586,6 +1593,10 @@ const isEliminated = (team, stats, standings) => {
   if (!s || s.mp === 0) return false;
   const st = standings[s.group];
   if (!st) return false;
+  const pos = st.indexOf(team);
+  // After all 3 group matches, 4th place is definitively eliminated —
+  // no top-2 path and only the 3rd-place team (not 4th) is eligible for the wildcard.
+  if (s.mp === 3 && pos === 3) return true;
   const rem = 3 - s.mp;
   const myCeiling = s.pts + rem * 3;
   const guaranteedAheadForTop2 = st.filter(t => t !== team && stats[t].pts > myCeiling).length;
@@ -3342,4 +3353,970 @@ function ChartsTab({
     return /*#__PURE__*/React.createElement("g", {
       key: p
     }, /*#__PURE__*/React.createElement("polyline", {
-      points: pts.map(([x, y]) => `${x},${y}`).joi
+      points: pts.map(([x, y]) => `${x},${y}`).join(' '),
+      fill: "none",
+      stroke: PC[p].hex,
+      strokeWidth: 2.5,
+      strokeLinejoin: "round",
+      strokeLinecap: "round"
+    }), pts.map(([x, y], i) => /*#__PURE__*/React.createElement("circle", {
+      key: i,
+      cx: x,
+      cy: y,
+      r: 3,
+      fill: PC[p].hex
+    })), /*#__PURE__*/React.createElement("text", {
+      x: pts[pts.length - 1][0] + 4,
+      y: pts[pts.length - 1][1] + 4,
+      fontSize: 9,
+      fontWeight: "700",
+      fill: PC[p].hex
+    }, timeline[n - 1].pts[p]));
+  }), /*#__PURE__*/React.createElement("text", {
+    x: M.l - 30,
+    y: M.t - 10,
+    fontSize: 9,
+    fill: T.textFaint,
+    textAnchor: "start"
+  }, "Pts")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 14px',
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13,
+      color: T.textPrimary
+    }
+  }, "Clinched Teams Over Time"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, "flags in each owner's shaded lane mark clinch events; leader lines are neutral"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 12,
+      marginLeft: 'auto',
+      flexWrap: 'wrap'
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("span", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "18",
+    height: "4"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: "0",
+    y1: "2",
+    x2: "18",
+    y2: "2",
+    stroke: PC[p].hex,
+    strokeWidth: "2.5"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '4px 8px 0',
+      overflowX: 'auto'
+    }
+  }, (() => {
+    const FW = 18,
+      FH = 12,
+      LANE_H = 16,
+      GAP = 2;
+    const LANE_Y = PLAYERS.map((_, i) => GAP + i * LANE_H);
+    const FLAG_STRIP_H = PLAYERS.length * LANE_H + GAP;
+    const CW = W,
+      CM = {
+        t: FLAG_STRIP_H + 12,
+        r: 52,
+        b: 36,
+        l: 42
+      };
+    const CH = CM.t + 140 + CM.b;
+    const CIW = CW - CM.l - CM.r,
+      CIH = CH - CM.t - CM.b;
+    const cxOf = i => CM.l + (n < 2 ? CIW / 2 : i / (n - 1) * CIW);
+    const cyOf = v => CM.t + CIH - v / 12 * CIH;
+    return /*#__PURE__*/React.createElement("svg", {
+      viewBox: `0 0 ${CW} ${CH}`,
+      width: "100%",
+      style: {
+        display: 'block',
+        minWidth: 380
+      }
+    }, PLAYERS.map((p, pi) => {
+      const laneY = LANE_Y[pi];
+      return /*#__PURE__*/React.createElement("g", {
+        key: p
+      }, /*#__PURE__*/React.createElement("rect", {
+        x: CM.l,
+        y: laneY,
+        width: CIW,
+        height: LANE_H - 1,
+        fill: PC[p].hex,
+        opacity: 0.10,
+        rx: 1
+      }), /*#__PURE__*/React.createElement("text", {
+        x: CM.l - 5,
+        y: laneY + 9,
+        textAnchor: "end",
+        fontSize: 8,
+        fontWeight: "800",
+        fill: PC[p].hex
+      }, OWNER_INITIALS[p]), timeline.map((t, i) => {
+        const teams = t.newClinches[p] || [];
+        if (!teams.length) return null;
+        const cx = cxOf(i);
+        const cy = cyOf(t.clinched[p] || 0);
+        const totalFW = teams.length * FW + (teams.length - 1) * 2;
+        return /*#__PURE__*/React.createElement("g", {
+          key: i
+        }, /*#__PURE__*/React.createElement("line", {
+          x1: cx,
+          y1: laneY + FH + 1,
+          x2: cx,
+          y2: cy - 5,
+          stroke: T.textFaint,
+          strokeWidth: 1,
+          strokeDasharray: "2,2",
+          opacity: 0.45
+        }), teams.map((team, fi) => {
+          const fx = cx - totalFW / 2 + fi * (FW + 2);
+          return /*#__PURE__*/React.createElement("svg", {
+            key: team,
+            x: fx,
+            y: laneY + 1,
+            width: FW,
+            height: FH,
+            viewBox: "0 0 30 20",
+            overflow: "hidden"
+          }, /*#__PURE__*/React.createElement("rect", {
+            width: "30",
+            height: "20",
+            fill: "white"
+          }), FLAG_SVGS[team], /*#__PURE__*/React.createElement("rect", {
+            width: "30",
+            height: "20",
+            fill: "none",
+            stroke: T.border,
+            strokeWidth: "2"
+          }));
+        }));
+      }));
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: CM.l,
+      x2: CW - 4,
+      y1: CM.t - 6,
+      y2: CM.t - 6,
+      stroke: T.border,
+      strokeWidth: 1
+    }), Array.from({
+      length: 7
+    }, (_, i) => {
+      const v = i * 2,
+        y = cyOf(v);
+      return /*#__PURE__*/React.createElement("g", {
+        key: i
+      }, /*#__PURE__*/React.createElement("line", {
+        x1: CM.l,
+        x2: CM.l + CIW,
+        y1: y,
+        y2: y,
+        stroke: T.borderLight,
+        strokeWidth: i === 0 ? 1.5 : 0.75
+      }), /*#__PURE__*/React.createElement("text", {
+        x: CM.l - 5,
+        y: y + 4,
+        textAnchor: "end",
+        fontSize: 9,
+        fill: T.textFaint
+      }, v));
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: CM.l,
+      x2: CM.l,
+      y1: CM.t,
+      y2: CM.t + CIH,
+      stroke: T.border,
+      strokeWidth: 1
+    }), timeline.map((pt, i) => {
+      if (!pt.label || xStep > 1 && i % xStep !== 0 && i !== n - 1) return null;
+      return /*#__PURE__*/React.createElement("text", {
+        key: i,
+        x: cxOf(i),
+        y: CH - 8,
+        textAnchor: "middle",
+        fontSize: 8,
+        fill: T.textFaint
+      }, pt.label);
+    }), PLAYERS.map((p, pi) => {
+      const pts = timeline.map((t, i) => [cxOf(i), cyOf(t.clinched[p] || 0)]);
+      const lastVal = timeline[n - 1].clinched[p] || 0;
+      const allFinals = PLAYERS.map(pp => timeline[n - 1].clinched[pp] || 0);
+      const sameCount = allFinals.filter(v => v === lastVal).length;
+      const nudge = sameCount > 1 ? pi % 2 === 0 ? -7 : 7 : 0;
+      return /*#__PURE__*/React.createElement("g", {
+        key: p
+      }, /*#__PURE__*/React.createElement("polyline", {
+        points: pts.map(([x, y]) => `${x},${y}`).join(' '),
+        fill: "none",
+        stroke: PC[p].hex,
+        strokeWidth: 2.5,
+        strokeLinejoin: "round",
+        strokeLinecap: "round"
+      }), pts.map(([cx, cy], i) => {
+        const hasClinch = (timeline[i].newClinches[p] || []).length > 0;
+        return hasClinch ? /*#__PURE__*/React.createElement("circle", {
+          key: i,
+          cx: cx,
+          cy: cy,
+          r: 4.5,
+          fill: PC[p].hex,
+          stroke: "#fff",
+          strokeWidth: 1.5
+        }) : /*#__PURE__*/React.createElement("circle", {
+          key: i,
+          cx: cx,
+          cy: cy,
+          r: 2.5,
+          fill: PC[p].hex
+        });
+      }), /*#__PURE__*/React.createElement("text", {
+        x: pts[n - 1][0] + 5,
+        y: pts[n - 1][1] + nudge,
+        fontSize: 9,
+        fontWeight: "700",
+        fill: PC[p].hex,
+        dominantBaseline: "middle"
+      }, lastVal));
+    }), /*#__PURE__*/React.createElement("text", {
+      x: CM.l - 28,
+      y: CM.t - 8,
+      fontSize: 9,
+      fill: T.textFaint,
+      textAnchor: "start"
+    }, "Teams"));
+  })())));
+}
+
+// ═══════════════════ KNOCKOUT TAB ═══════════════════
+
+const MATCH_CARD_H = 54;
+const MATCH_UNIT = 68;
+const COL_W = 170;
+const bracketTop = (r, i) => (i + 0.5) * Math.pow(2, r) * MATCH_UNIT - MATCH_CARD_H / 2;
+const bracketLeft = r => r * COL_W;
+const BRACKET_H = 16 * MATCH_UNIT;
+const BRACKET_W = 5 * COL_W;
+
+// Pre-match win probability from SEED_ODDS, normalized so both teams sum to 100%.
+// Returns [p1pct, p2pct] or null if either team is TBD/unknown.
+function matchWinProb(t1, t2) {
+  const p1 = SEED_ODDS[t1],
+    p2 = SEED_ODDS[t2];
+  if (!p1 || !p2 || !t1 || !t2 || t1 === 'TBD' || t2 === 'TBD') return null;
+  const total = p1 + p2;
+  return [Math.round(p1 / total * 100), Math.round(p2 / total * 100)];
+}
+function BracketCard({
+  t1,
+  t2,
+  s1,
+  s2,
+  completed,
+  isLive
+}) {
+  const o1 = PICKS[t1],
+    o2 = PICKS[t2];
+  const winner = completed && s1 !== null && s2 !== null ? s1 > s2 ? t1 : s2 > s1 ? t2 : null : null;
+  const probs = matchWinProb(t1, t2);
+  const rows = [{
+    team: t1,
+    own: o1,
+    score: s1,
+    prob: probs ? probs[0] : null
+  }, {
+    team: t2,
+    own: o2,
+    score: s2,
+    prob: probs ? probs[1] : null
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 150,
+      border: isLive ? `1px solid ${T.red}` : `1px solid ${T.border}`,
+      borderRadius: 4,
+      background: T.card,
+      overflow: 'hidden',
+      fontSize: 11
+    }
+  }, rows.map(({
+    team,
+    own,
+    score,
+    prob
+  }, idx) => /*#__PURE__*/React.createElement("div", {
+    key: idx,
+    style: {
+      padding: '5px 7px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      borderTop: idx === 1 ? `1px solid ${T.borderLight}` : 'none',
+      background: winner === team ? own ? PC[own].subtle : T.accentSubtle : 'transparent'
+    }
+  }, team && team !== 'TBD' && /*#__PURE__*/React.createElement(Flag, {
+    team: team,
+    size: 13
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      color: winner === team ? T.textPrimary : own ? PC[own].hex : T.textSecondary,
+      fontWeight: winner === team ? 700 : own ? 600 : 400,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      fontSize: 10
+    }
+  }, team || 'TBD'), /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: own
+  }), prob !== null && score === null && !completed && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      fontVariantNumeric: 'tabular-nums',
+      flexShrink: 0
+    }
+  }, prob, "%"), prob !== null && completed && score === null && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      opacity: 0.4,
+      fontVariantNumeric: 'tabular-nums',
+      flexShrink: 0
+    }
+  }, prob, "%"), score !== null && score !== undefined && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: winner === team ? T.accent : T.textTertiary,
+      marginLeft: 2,
+      flexShrink: 0
+    }
+  }, score))));
+}
+function BracketLines() {
+  const lines = [];
+  KO_ROUNDS.slice(0, -1).forEach((round, r) => {
+    const count = KO_SIZES[round];
+    for (let i = 0; i < count; i += 2) {
+      const top1 = bracketTop(r, i) + MATCH_CARD_H / 2;
+      const top2 = bracketTop(r, i + 1) + MATCH_CARD_H / 2;
+      const x1 = bracketLeft(r) + 150;
+      const xMid = x1 + 10;
+      const x2 = bracketLeft(r + 1);
+      const topNext = bracketTop(r + 1, Math.floor(i / 2)) + MATCH_CARD_H / 2;
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i}`,
+        points: `${x1},${top1} ${xMid},${top1} ${xMid},${topNext} ${x2},${topNext}`,
+        fill: "none",
+        stroke: T.border,
+        strokeWidth: "1"
+      }));
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i + 1}`,
+        points: `${x1},${top2} ${xMid},${top2} ${xMid},${topNext} ${x2},${topNext}`,
+        fill: "none",
+        stroke: T.border,
+        strokeWidth: "1"
+      }));
+    }
+  });
+  return /*#__PURE__*/React.createElement("svg", {
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: BRACKET_W,
+      height: BRACKET_H,
+      pointerEvents: 'none'
+    }
+  }, lines);
+}
+function KnockoutTab({
+  knockoutEvents,
+  stats,
+  standings,
+  groupEvents,
+  liveOdds
+}) {
+  const r32Real = knockoutEvents.filter(e => e.round === 'R32').sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const usingProjection = r32Real.length === 0;
+  const projectedR32 = (() => {
+    const slots = [];
+    for (let i = 0; i < 12; i++) {
+      const [s1, s2] = R32_SEEDS[i];
+      const g1 = s1[1],
+        g2 = s2[1];
+      slots.push({
+        t1: standings[g1] && standings[g1][0] || s1,
+        t2: standings[g2] && standings[g2][1] || s2,
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    const thirds = Object.entries(GROUPS).map(([g]) => {
+      const t = standings[g] && standings[g][2];
+      return t ? {
+        team: t,
+        ...stats[t]
+      } : null;
+    }).filter(Boolean).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      return b.gf - b.ga - (a.gf - a.ga);
+    });
+    for (let i = 0; i < 4; i++) {
+      slots.push({
+        t1: thirds[i * 2] ? thirds[i * 2].team : '3rd TBD',
+        t2: thirds[i * 2 + 1] ? thirds[i * 2 + 1].team : '3rd TBD',
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    return slots;
+  })();
+  const getRoundSlots = round => {
+    const real = knockoutEvents.filter(e => e.round === round).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (round === 'R32' && usingProjection) return projectedR32;
+    const size = KO_SIZES[round];
+    const slots = [];
+    for (let i = 0; i < size; i++) {
+      slots.push(real[i] || {
+        t1: 'TBD',
+        t2: 'TBD',
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    return slots;
+  };
+  const thirdPlaceMatch = knockoutEvents.find(e => e.round === 'Third');
+  const knockoutLosers = new Set();
+  knockoutEvents.forEach(e => {
+    if (e.completed && e.s1 !== null && e.s2 !== null) {
+      if (e.s1 > e.s2) knockoutLosers.add(e.t2);else if (e.s2 > e.s1) knockoutLosers.add(e.t1);
+    }
+  });
+  const remaining = PLAYERS.reduce((acc, p) => {
+    const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    acc[p] = myTeams.filter(t => getClinch(t, stats, standings, groupEvents) !== 'ELIMINATED' && !knockoutLosers.has(t)).length;
+    return acc;
+  }, {});
+
+  // WC win probability per owner — proportional to their remaining teams' current odds,
+  // normalized so all four owners sum to exactly 100%.
+  // Uses live sportsbook odds (fetched each refresh) when available; falls back to
+  // pre-tournament seed odds when the live odds haven't loaded yet (e.g. ESPN path).
+  const rawWin = PLAYERS.reduce((acc, p) => {
+    const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    acc[p] = myTeams.reduce((sum, t) => {
+      if (knockoutLosers.has(t)) return sum;
+      if (getClinch(t, stats, standings, groupEvents) === 'ELIMINATED') return sum;
+      const odds = liveOdds && liveOdds[t] != null ? liveOdds[t] : SEED_ODDS[t] ?? 0;
+      return sum + odds;
+    }, 0);
+    return acc;
+  }, {});
+  const totalRaw = Object.values(rawWin).reduce((a, b) => a + b, 0);
+  const wcProb = PLAYERS.reduce((acc, p) => {
+    acc[p] = totalRaw > 0 ? rawWin[p] / totalRaw : 0.25;
+    return acc;
+  }, {});
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: '12px 16px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: T.textFaint,
+      textTransform: 'uppercase',
+      letterSpacing: '0.8px',
+      marginBottom: 10
+    }
+  }, "Probability of having the World Cup winner"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 10
+    }
+  }, PLAYERS.map(p => {
+    const pct = Math.round(wcProb[p] * 100);
+    return /*#__PURE__*/React.createElement("div", {
+      key: p,
+      style: {
+        textAlign: 'center'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: PC[p].hex,
+        marginBottom: 4
+      }
+    }, p), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 22,
+        fontWeight: 800,
+        color: PC[p].hex,
+        lineHeight: 1
+      }
+    }, pct, "%"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 5,
+        background: T.borderLight,
+        borderRadius: 3,
+        marginTop: 6,
+        overflow: 'hidden'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: `${pct}%`,
+        height: '100%',
+        background: PC[p].hex,
+        borderRadius: 3
+      }
+    })));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      marginTop: 8
+    }
+  }, "Based on current sportsbook odds for each owner's still-active teams (live odds when available, pre-tournament seed as fallback), normalized to 100%.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 10
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderTop: `3px solid ${PC[p].hex}`,
+      borderRadius: 4,
+      padding: '12px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: T.textTertiary
+    }
+  }, "teams remaining")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 'auto',
+      fontSize: 24,
+      fontWeight: 800,
+      color: PC[p].hex,
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, remaining[p])))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: 16,
+      overflowX: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      width: BRACKET_W,
+      height: BRACKET_H + 40,
+      minWidth: BRACKET_W
+    }
+  }, KO_ROUNDS.map((round, r) => /*#__PURE__*/React.createElement("div", {
+    key: round,
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: bracketLeft(r),
+      width: 150,
+      textAlign: 'center',
+      fontSize: 9,
+      color: T.accent,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      padding: '3px 0',
+      borderBottom: `1px solid ${T.border}`
+    }
+  }, round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' : round === 'QF' ? 'Quarterfinals' : round === 'SF' ? 'Semifinals' : 'Final')), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 22,
+      left: 0,
+      width: BRACKET_W,
+      height: BRACKET_H
+    }
+  }, /*#__PURE__*/React.createElement(BracketLines, null), KO_ROUNDS.map((round, r) => {
+    const slots = getRoundSlots(round);
+    return slots.map((m, i) => /*#__PURE__*/React.createElement("div", {
+      key: `${round}-${i}`,
+      style: {
+        position: 'absolute',
+        top: bracketTop(r, i),
+        left: bracketLeft(r)
+      }
+    }, /*#__PURE__*/React.createElement(BracketCard, {
+      t1: m.t1,
+      t2: m.t2,
+      s1: m.s1,
+      s2: m.s2,
+      completed: m.completed,
+      isLive: m.state === 'in'
+    })));
+  })))), thirdPlaceMatch && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, "3rd place match:"), /*#__PURE__*/React.createElement(BracketCard, {
+    t1: thirdPlaceMatch.t1,
+    t2: thirdPlaceMatch.t2,
+    s1: thirdPlaceMatch.s1,
+    s2: thirdPlaceMatch.s2,
+    completed: thirdPlaceMatch.completed,
+    isLive: thirdPlaceMatch.state === 'in'
+  })));
+}
+
+// ═══════════════════ MAIN APP ═══════════════════
+
+function App() {
+  const [activeTab, setActiveTab] = useState('groups');
+  const [standingsArr, setStandingsArr] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [liveOdds, setLiveOdds] = useState(null); // null = use SEED_ODDS fallback
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [dataSource, setDataSource] = useState(null); // 'espn' | 'ai-search' | null
+  const [tick, setTick] = useState(0);
+  const timeoutRef = useRef(null);
+  const matchesRef = useRef([]);
+  matchesRef.current = matches;
+  const standingsRef = useRef([]);
+  standingsRef.current = standingsArr;
+  const cooldownRef = useRef(0);
+  const backoffRef = useRef(60000); // starts at 1 min, doubles on repeated AI-search rate limits
+
+  // 1-second ticker purely so the cooldown countdown in the UI updates live
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const scheduleNext = useCallback(delayMs => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      refresh();
+    }, delayMs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const refresh = useCallback(async () => {
+    if (Date.now() < cooldownRef.current) {
+      scheduleNext(Math.max(5000, cooldownRef.current - Date.now()));
+      return;
+    }
+    setLoading(true);
+    try {
+      const {
+        standings,
+        matches: newMatches,
+        source,
+        liveOdds: freshOdds
+      } = await fetchLiveData();
+      const merged = newMatches && newMatches.length ? mergeMatches(matchesRef.current, newMatches) : matchesRef.current;
+      if (standings && standings.length) setStandingsArr(standings);
+      if (newMatches && newMatches.length) setMatches(merged);
+      if (freshOdds) setLiveOdds(freshOdds);
+      setError(null);
+      setDataSource(source);
+      backoffRef.current = 60000;
+      cooldownRef.current = 0;
+      setCooldownUntil(0);
+      const now = new Date();
+      setLastUpdated(now);
+      saveCache({
+        standings: standings && standings.length ? standings : standingsRef.current,
+        matches: merged,
+        liveOdds: freshOdds || liveOdds,
+        ts: now.getTime()
+      });
+      scheduleNext(source === 'espn' ? 60 * 1000 : 10 * 60 * 1000);
+    } catch (err) {
+      const msg = err && err.message || 'Could not reach live score data';
+      setError(msg);
+      if (/429/.test(msg)) {
+        const wait = backoffRef.current;
+        cooldownRef.current = Date.now() + wait;
+        setCooldownUntil(cooldownRef.current);
+        backoffRef.current = Math.min(wait * 2, 30 * 60 * 1000);
+        scheduleNext(wait);
+      } else {
+        scheduleNext(2 * 60 * 1000);
+      }
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleNext]);
+  useEffect(() => {
+    loadCache().then(c => {
+      if (c) {
+        if (c.standings) setStandingsArr(c.standings);
+        if (c.matches) setMatches(c.matches);
+        if (c.liveOdds) setLiveOdds(c.liveOdds);
+        if (c.ts) setLastUpdated(new Date(c.ts));
+      }
+      refresh();
+    });
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const stats = statsFromStandings(standingsArr);
+  const groupEvents = matches.filter(m => m.stage === 'group');
+  const knockoutEvents = matches.filter(m => m.stage === 'knockout');
+  const standings = getStandings(stats, groupEvents);
+  const inCooldown = Date.now() < cooldownUntil;
+  const cooldownSecs = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  const tabs = [{
+    id: 'draft',
+    label: 'Draft recap'
+  }, {
+    id: 'groups',
+    label: 'Group stage'
+  }, {
+    id: 'charts',
+    label: 'Charts & graphs'
+  }, {
+    id: 'knockout',
+    label: 'Knockout bracket'
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
+      background: T.page,
+      minHeight: '100vh',
+      color: T.textPrimary
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 4,
+      background: T.accent
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '12px 10px',
+      maxWidth: 1100,
+      margin: '0 auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: '1 1 160px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 20,
+      fontWeight: 800,
+      letterSpacing: -0.3,
+      color: T.textPrimary
+    }
+  }, "CHORB ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent
+    }
+  }, "FIFA 2026"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '6px 14px'
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 8,
+      height: 8,
+      borderRadius: 2,
+      background: PC[p].hex
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: refresh,
+    disabled: loading || inCooldown,
+    style: {
+      padding: '5px 12px',
+      borderRadius: 4,
+      border: `1px solid ${T.border}`,
+      background: loading || inCooldown ? T.cardAlt : T.card,
+      color: T.textSecondary,
+      fontSize: 11,
+      fontWeight: 600,
+      cursor: loading || inCooldown ? 'default' : 'pointer'
+    }
+  }, loading ? 'Searching for the latest scores…' : inCooldown ? `Rate limited — retrying in ${cooldownSecs}s` : '↻ Refresh now'), lastUpdated && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.textFaint
+    }
+  }, "Last updated ", lastUpdated.toLocaleTimeString(), dataSource === 'espn' && ' · live via ESPN · checks every 1 min', dataSource === 'ai-search' && ' · live via AI web search (artifact sandbox fallback) · checks every 10 min'), error && !inCooldown && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.red
+    }
+  }, "Live data failed (", error, ") — showing last cached results. Try Refresh now."), inCooldown && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.red
+    }
+  }, "Hit a rate limit on the last attempt — waiting before retrying automatically, to avoid making it worse.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4,
+      borderBottom: `2px solid ${T.border}`
+    }
+  }, tabs.map(tab => /*#__PURE__*/React.createElement("button", {
+    key: tab.id,
+    onClick: () => setActiveTab(tab.id),
+    style: {
+      padding: '8px 16px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer',
+      background: 'transparent',
+      color: activeTab === tab.id ? T.accent : T.textTertiary,
+      border: 'none',
+      borderBottom: activeTab === tab.id ? `2px solid ${T.accent}` : '2px solid transparent',
+      marginBottom: -2,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px'
+    }
+  }, tab.label)))), activeTab === 'draft' && /*#__PURE__*/React.createElement(DraftRecapTab, null), activeTab === 'groups' && /*#__PURE__*/React.createElement(GroupStageTab, {
+    groupEvents: groupEvents,
+    stats: stats,
+    standings: standings,
+    liveOdds: liveOdds
+  }), activeTab === 'charts' && /*#__PURE__*/React.createElement(ChartsTab, {
+    groupEvents: groupEvents,
+    stats: stats,
+    standings: standings,
+    liveOdds: liveOdds
+  }), activeTab === 'knockout' && /*#__PURE__*/React.createElement(KnockoutTab, {
+    knockoutEvents: knockoutEvents,
+    stats: stats,
+    standings: standings,
+    groupEvents: groupEvents,
+    liveOdds: liveOdds
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 24,
+      paddingTop: 12,
+      borderTop: `1px solid ${T.border}`,
+      fontSize: 10,
+      color: T.textFaint,
+      textAlign: 'center'
+    }
+  }, "Live scores via ESPN where reachable, with an AI web-search fallback inside the Claude.ai artifact sandbox — may lag actual play by a minute or two · 2026 FIFA World Cup · USA, Canada & Mexico")));
+}
+const root=ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
