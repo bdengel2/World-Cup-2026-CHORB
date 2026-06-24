@@ -1,0 +1,4295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CHORB FIFA 2026</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<style>html,body{margin:0;padding:0}*{box-sizing:border-box}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+if (!window.storage) {
+  const mem = {};
+  window.storage = {
+    get: async k => (k in mem ? {key:k,value:mem[k]} : (() => {throw new Error('not found')})()),
+    set: async (k,v) => { mem[k]=v; return {key:k,value:v}; },
+    delete: async k => { delete mem[k]; return {key:k,deleted:true}; },
+    list: async () => ({keys:Object.keys(mem)}),
+  };
+}
+</script>
+<script>
+const {
+  useState,
+  useEffect,
+  useCallback,
+  useRef
+} = React;
+
+// ═══════════════════ THEME (FiveThirtyEight-style light editorial look) ═══════════════════
+
+const T = {
+  page: '#F2F1EA',
+  card: '#FFFFFF',
+  cardAlt: '#F7F6F0',
+  border: '#DEDCD0',
+  borderLight: '#EAE8DD',
+  textPrimary: '#262626',
+  textSecondary: '#55554d',
+  textTertiary: '#8a8a80',
+  textFaint: '#a3a399',
+  accent: '#C84630',
+  accentSubtle: 'rgba(200,70,48,0.08)',
+  gold: '#D9A441',
+  goldText: '#5c3d0a',
+  green: '#3E8C58',
+  red: '#B23A2E',
+  blue: '#3E7DCC',
+  blueBadge: '#A9CDE8',
+  blueBadgeText: '#0c4a6e',
+  purpleBadge: '#D9CCEC',
+  purpleBadgeText: '#4a2e6e',
+  elimBadge: '#DEDCD0',
+  elimBadgeText: '#6b6b63'
+};
+
+// ═══════════════════ CONSTANTS ═══════════════════
+
+const PLAYERS = ['Alyssa', 'Brandon', 'Courtney', 'Daniel'];
+const PC = {
+  Alyssa: {
+    hex: '#C0447D',
+    subtle: 'rgba(192,68,125,0.10)'
+  },
+  Brandon: {
+    hex: '#2E6E9E',
+    subtle: 'rgba(46,110,158,0.10)'
+  },
+  Courtney: {
+    hex: '#4F8F3F',
+    subtle: 'rgba(79,143,63,0.10)'
+  },
+  Daniel: {
+    hex: '#7A4FA3',
+    subtle: 'rgba(122,79,163,0.10)'
+  }
+};
+const OWNER_INITIALS = {
+  Daniel: 'DO',
+  Brandon: 'BD',
+  Courtney: 'CC',
+  Alyssa: 'AM'
+};
+function OwnerBadge({
+  owner
+}) {
+  if (!owner) return null;
+  return /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1px 4px',
+      borderRadius: 3,
+      fontSize: 9,
+      fontWeight: 700,
+      background: PC[owner].hex,
+      color: '#fff',
+      letterSpacing: '0.3px',
+      flexShrink: 0
+    },
+    title: owner
+  }, OWNER_INITIALS[owner]);
+}
+const GROUPS = {
+  A: ['Mexico', 'South Korea', 'South Africa', 'Czechia'],
+  B: ['Canada', 'Switzerland', 'Qatar', 'Bosnia and Herzegovina'],
+  C: ['Brazil', 'Morocco', 'Scotland', 'Haiti'],
+  D: ['USA', 'Australia', 'Paraguay', 'Turkey'],
+  E: ['Germany', 'Ecuador', 'Ivory Coast', 'Curaçao'],
+  F: ['Netherlands', 'Japan', 'Tunisia', 'Sweden'],
+  G: ['Belgium', 'Iran', 'Egypt', 'New Zealand'],
+  H: ['Spain', 'Uruguay', 'Saudi Arabia', 'Cape Verde'],
+  I: ['France', 'Senegal', 'Norway', 'Iraq'],
+  J: ['Argentina', 'Austria', 'Algeria', 'Jordan'],
+  K: ['Portugal', 'Colombia', 'Uzbekistan', 'DR Congo'],
+  L: ['England', 'Croatia', 'Panama', 'Ghana']
+};
+const ALL_TEAMS = Object.values(GROUPS).flat();
+
+// ── Betting-implied probabilities ────────────────────────────────────────────
+// Seed odds sourced from Fox Sports / BetMGM as of June 23, 2026, converted from
+// American moneyline to implied probabilities and normalized within each group so
+// each group sums to exactly 2.6667 (= 32 teams advancing / 12 groups), removing
+// the sportsbook vig. These are used as the base layer; the live refresh fetches
+// current odds from sportsbooks and updates this table when available.
+
+const SEED_ODDS = {
+  'Mexico': 0.8582,
+  'South Korea': 0.6952,
+  'South Africa': 0.4180,
+  'Czechia': 0.6952,
+  'Canada': 0.8340,
+  'Switzerland': 0.8954,
+  'Qatar': 0.2701,
+  'Bosnia and Herzegovina': 0.6672,
+  'Brazil': 0.9544,
+  'Morocco': 0.8763,
+  'Scotland': 0.7288,
+  'Haiti': 0.1071,
+  'USA': 0.8081,
+  'Australia': 0.4797,
+  'Paraguay': 0.6156,
+  'Turkey': 0.7632,
+  'Germany': 0.9381,
+  'Ecuador': 0.8528,
+  'Ivory Coast': 0.7896,
+  'Curaçao': 0.0861,
+  'Netherlands': 0.8742,
+  'Japan': 0.7493,
+  'Tunisia': 0.3903,
+  'Sweden': 0.6528,
+  'Belgium': 0.9221,
+  'Iran': 0.6323,
+  'Egypt': 0.7329,
+  'New Zealand': 0.3794,
+  'Spain': 0.9706,
+  'Uruguay': 0.8912,
+  'Saudi Arabia': 0.4782,
+  'Cape Verde': 0.3268,
+  'France': 0.9475,
+  'Senegal': 0.6736,
+  'Norway': 0.8698,
+  'Iraq': 0.1757,
+  'Argentina': 0.9424,
+  'Algeria': 0.7196,
+  'Austria': 0.7932,
+  'Jordan': 0.2115,
+  'Portugal': 0.9517,
+  'Colombia': 0.8825,
+  'Uzbekistan': 0.3132,
+  'DR Congo': 0.5193,
+  'England': 0.9623,
+  'Croatia': 0.8099,
+  'Panama': 0.3037,
+  'Ghana': 0.5908
+};
+
+// Convert American moneyline → raw implied probability
+const americanToImplied = odds => odds < 0 ? Math.abs(odds) / (Math.abs(odds) + 100) : 100 / (odds + 100);
+
+// Normalize a dict of {team: americanOdds} per-group so each group sums to 32/12
+// Returns {team: probability (0-1)} or null if data is too sparse to trust
+const normalizeOddsDict = rawDict => {
+  const TARGET = 32 / 12;
+  const result = {};
+  let coveredGroups = 0;
+  Object.entries(GROUPS).forEach(([g, teams]) => {
+    const known = teams.filter(t => rawDict[t] !== undefined);
+    if (known.length < 2) return; // not enough data for this group
+    coveredGroups++;
+    const raws = teams.map(t => ({
+      t,
+      p: americanToImplied(rawDict[t] ?? (t in rawDict ? rawDict[t] : 0))
+    }));
+    const total = raws.reduce((s, r) => s + r.p, 0);
+    if (total === 0) return;
+    raws.forEach(({
+      t,
+      p
+    }) => {
+      result[t] = Math.min(0.9999, Math.max(0.0001, p * TARGET / total));
+    });
+  });
+  return coveredGroups >= 6 ? result : null; // require at least half the groups to trust
+};
+
+// ═══════════════════ FLAGS — self-contained inline SVG (no network dependency, renders everywhere incl. Windows) ═══════════════════
+
+const Star = ({
+  cx,
+  cy,
+  r,
+  fill
+}) => /*#__PURE__*/React.createElement("polygon", {
+  points: "0,-1 0.2245,-0.309 0.9511,-0.309 0.3633,0.1181 0.5878,0.809 0,0.382 -0.5878,0.809 -0.3633,0.1181 -0.9511,-0.309 -0.2245,-0.309",
+  fill: fill,
+  transform: `translate(${cx} ${cy}) scale(${r})`
+});
+const hStripes = colors => colors.map((c, i) => {
+  const hgt = 20 / colors.length;
+  return /*#__PURE__*/React.createElement("rect", {
+    key: i,
+    x: "0",
+    y: i * hgt,
+    width: "30",
+    height: hgt,
+    fill: c
+  });
+});
+const vStripes = colors => colors.map((c, i) => {
+  const w = 30 / colors.length;
+  return /*#__PURE__*/React.createElement("rect", {
+    key: i,
+    x: i * w,
+    y: "0",
+    width: w,
+    height: "20",
+    fill: c
+  });
+});
+const hStripesW = (colors, weights) => {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let y = 0;
+  return colors.map((c, i) => {
+    const hgt = 20 * weights[i] / total;
+    const r = /*#__PURE__*/React.createElement("rect", {
+      key: i,
+      x: "0",
+      y: y,
+      width: "30",
+      height: hgt,
+      fill: c
+    });
+    y += hgt;
+    return r;
+  });
+};
+const vStripesW = (colors, weights) => {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let x = 0;
+  return colors.map((c, i) => {
+    const w = 30 * weights[i] / total;
+    const r = /*#__PURE__*/React.createElement("rect", {
+      key: i,
+      x: x,
+      y: "0",
+      width: w,
+      height: "20",
+      fill: c
+    });
+    x += w;
+    return r;
+  });
+};
+const nordicCross = (bg, cross) => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+  width: "30",
+  height: "20",
+  fill: bg
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "9",
+  y: "0",
+  width: "4",
+  height: "20",
+  fill: cross
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "0",
+  y: "8",
+  width: "30",
+  height: "4",
+  fill: cross
+}));
+const saltire = (bg, line) => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+  width: "30",
+  height: "20",
+  fill: bg
+}), /*#__PURE__*/React.createElement("line", {
+  x1: "0",
+  y1: "0",
+  x2: "30",
+  y2: "20",
+  stroke: line,
+  strokeWidth: "5"
+}), /*#__PURE__*/React.createElement("line", {
+  x1: "30",
+  y1: "0",
+  x2: "0",
+  y2: "20",
+  stroke: line,
+  strokeWidth: "5"
+}));
+const stGeorge = (bg, cross) => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+  width: "30",
+  height: "20",
+  fill: bg
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "12.5",
+  y: "0",
+  width: "5",
+  height: "20",
+  fill: cross
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "0",
+  y: "7.5",
+  width: "30",
+  height: "5",
+  fill: cross
+}));
+const ukCanton = starColor => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+  x: "1",
+  y: "1",
+  width: "10",
+  height: "7",
+  fill: "#fff"
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "1",
+  y: "3.7",
+  width: "10",
+  height: "1.6",
+  fill: "#CF142B"
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "5.2",
+  y: "1",
+  width: "1.6",
+  height: "7",
+  fill: "#CF142B"
+}));
+const FLAG_SVGS = {
+  Mexico: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#006847', '#FFFFFF', '#CE1126'])),
+  'South Korea': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M15,4 a6,6 0 0,1 0,12 a3,3 0 0,1 0,-6 a3,3 0 0,0 0,-6 Z",
+    fill: "#CD2E3A"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M15,16 a6,6 0 0,1 0,-12 a3,3 0 0,0 0,6 a3,3 0 0,1 0,6 Z",
+    fill: "#0047A0"
+  })),
+  'South Africa': /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#E03C31', '#FFB81C', '#007749', '#FFB81C', '#001489'], [3, 1, 4, 1, 3])),
+  Czechia: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "10",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "10",
+    width: "30",
+    height: "10",
+    fill: "#D7141A"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: "0,0 0,20 12,10",
+    fill: "#11457E"
+  })),
+  Canada: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#FF0000', '#FFFFFF', '#FF0000'])),
+  Switzerland: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#D52B1E"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "13",
+    y: "5",
+    width: "4",
+    height: "10",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "10",
+    y: "8",
+    width: "10",
+    height: "4",
+    fill: "#fff"
+  })),
+  Qatar: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#8D1B3D"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "8",
+    height: "20",
+    fill: "#fff"
+  })),
+  'Bosnia and Herzegovina': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#002395"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: "0,0 14,0 0,20",
+    fill: "#FECB00"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 18,
+    cy: 4,
+    r: 1.3,
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 21,
+    cy: 8,
+    r: 1.3,
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 24,
+    cy: 12,
+    r: 1.3,
+    fill: "#fff"
+  })),
+  Brazil: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#009739"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: "15,2 28,10 15,18 2,10",
+    fill: "#FEDD00"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "10",
+    r: "4.5",
+    fill: "#012169"
+  })),
+  Morocco: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#C1272D"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 15,
+    cy: 10,
+    r: 4,
+    fill: "#006233"
+  })),
+  Scotland: saltire('#0065BD', '#fff'),
+  Haiti: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "10",
+    fill: "#00209F"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "10",
+    width: "30",
+    height: "10",
+    fill: "#D21034"
+  })),
+  USA: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#B22234', '#fff', '#B22234', '#fff', '#B22234', '#fff', '#B22234']), /*#__PURE__*/React.createElement("rect", {
+    width: "12",
+    height: "11",
+    fill: "#3C3B6E"
+  })),
+  Australia: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#00247D"
+  }), ukCanton(), /*#__PURE__*/React.createElement(Star, {
+    cx: 20,
+    cy: 6,
+    r: 1.3,
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 24,
+    cy: 11,
+    r: 1.3,
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 19,
+    cy: 15,
+    r: 1.3,
+    fill: "#fff"
+  })),
+  Paraguay: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#D52B1E', '#FFFFFF', '#0038A8'])),
+  Turkey: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#E30A17"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "13",
+    cy: "10",
+    r: "5",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "10",
+    r: "4.2",
+    fill: "#E30A17"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 20,
+    cy: 10,
+    r: 1.3,
+    fill: "#fff"
+  })),
+  Germany: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#000000', '#DD0000', '#FFCE00'])),
+  Ecuador: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#FFDD00', '#0072CE', '#EF3340'], [2, 1, 1])),
+  'Ivory Coast': /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#F77F00', '#FFFFFF', '#009E60'])),
+  'Curaçao': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#002B7F"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "14",
+    width: "30",
+    height: "2.5",
+    fill: "#F9E814"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 8,
+    cy: 6,
+    r: 1.4,
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 12,
+    cy: 9,
+    r: 1,
+    fill: "#fff"
+  })),
+  Netherlands: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#AE1C28', '#FFFFFF', '#21468B'])),
+  Japan: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "10",
+    r: "6",
+    fill: "#BC002D"
+  })),
+  Tunisia: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#E70013"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "10",
+    r: "5.5",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "16.5",
+    cy: "10",
+    r: "4.2",
+    fill: "#E70013"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "17.5",
+    cy: "10",
+    r: "4.2",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 15.3,
+    cy: 10,
+    r: 1,
+    fill: "#E70013"
+  })),
+  Sweden: nordicCross('#006AA7', '#FECC02'),
+  Belgium: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#000000', '#FAE042', '#ED2939'])),
+  Iran: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#239F40', '#FFFFFF', '#DA0000'])),
+  Egypt: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#CE1126', '#FFFFFF', '#000000'])),
+  'New Zealand': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#00247D"
+  }), ukCanton(), /*#__PURE__*/React.createElement(Star, {
+    cx: 21,
+    cy: 6,
+    r: 1.3,
+    fill: "#CF142B"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 25,
+    cy: 9,
+    r: 1.1,
+    fill: "#CF142B"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 21,
+    cy: 14,
+    r: 1.3,
+    fill: "#CF142B"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 17,
+    cy: 11,
+    r: 1,
+    fill: "#CF142B"
+  })),
+  Spain: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#AA151B', '#F1BF00', '#AA151B'], [1, 2, 1])),
+  Uruguay: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#fff', '#0038A8', '#fff', '#0038A8', '#fff']), /*#__PURE__*/React.createElement("rect", {
+    width: "10",
+    height: "8",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "5",
+    cy: "4",
+    r: "2.2",
+    fill: "#FCD116"
+  })),
+  'Saudi Arabia': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#006C35"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "16",
+    width: "30",
+    height: "1",
+    fill: "#fff"
+  })),
+  'Cape Verde': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#003893"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "12",
+    width: "30",
+    height: "1.2",
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "13.2",
+    width: "30",
+    height: "1.6",
+    fill: "#CF2027"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "14.8",
+    width: "30",
+    height: "1.2",
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 9,
+    cy: 8,
+    r: 1,
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 12,
+    cy: 5.5,
+    r: 1,
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 15.5,
+    cy: 5,
+    r: 1,
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 19,
+    cy: 5.5,
+    r: 1,
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 22,
+    cy: 8,
+    r: 1,
+    fill: "#F7D116"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 15.5,
+    cy: 10,
+    r: 1,
+    fill: "#F7D116"
+  })),
+  France: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#0055A4', '#FFFFFF', '#EF4135'])),
+  Senegal: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#00853F', '#FDEF42', '#E31B23']), /*#__PURE__*/React.createElement(Star, {
+    cx: 15,
+    cy: 10,
+    r: 2.2,
+    fill: "#00853F"
+  })),
+  Norway: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#BA0C2F"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "8",
+    y: "0",
+    width: "6",
+    height: "20",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "0",
+    y: "7",
+    width: "30",
+    height: "6",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "9.5",
+    y: "0",
+    width: "3",
+    height: "20",
+    fill: "#00205B"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "0",
+    y: "8.5",
+    width: "30",
+    height: "3",
+    fill: "#00205B"
+  })),
+  Iraq: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#CE1126', '#FFFFFF', '#000000'])),
+  Argentina: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#74ACDF', '#FFFFFF', '#74ACDF'], [1, 1, 1]), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "10",
+    r: "2.2",
+    fill: "#F6B40E"
+  })),
+  Austria: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#ED2939', '#FFFFFF', '#ED2939'], [1, 1, 1])),
+  Algeria: /*#__PURE__*/React.createElement(React.Fragment, null, vStripes(['#006233', '#FFFFFF']), /*#__PURE__*/React.createElement("circle", {
+    cx: "14.5",
+    cy: "10",
+    r: "3",
+    fill: "#D21034"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15.6",
+    cy: "10",
+    r: "2.5",
+    fill: "#FFFFFF"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 16.3,
+    cy: 10,
+    r: 0.9,
+    fill: "#D21034"
+  })),
+  Jordan: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#000000', '#FFFFFF', '#006C35']), /*#__PURE__*/React.createElement("polygon", {
+    points: "0,0 0,20 13,10",
+    fill: "#CE1126"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 6,
+    cy: 10,
+    r: 1.8,
+    fill: "#fff"
+  })),
+  Portugal: /*#__PURE__*/React.createElement(React.Fragment, null, vStripesW(['#046A38', '#DA291C'], [2, 3])),
+  Colombia: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#FCD116', '#003893', '#CE1126'], [2, 1, 1])),
+  Uzbekistan: /*#__PURE__*/React.createElement(React.Fragment, null, hStripesW(['#0099B5', '#CE1126', '#fff', '#CE1126', '#1EB53A'], [8, 1, 2, 1, 8])),
+  'DR Congo': /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "30",
+    height: "20",
+    fill: "#007FFF"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: "0",
+    y1: "20",
+    x2: "30",
+    y2: "0",
+    stroke: "#F7D618",
+    strokeWidth: "5"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: "0",
+    y1: "20",
+    x2: "30",
+    y2: "0",
+    stroke: "#CE1021",
+    strokeWidth: "3"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 4,
+    cy: 4,
+    r: 1.6,
+    fill: "#F7D618"
+  })),
+  England: stGeorge('#fff', '#CE1124'),
+  Croatia: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#FF0000', '#FFFFFF', '#171796']), /*#__PURE__*/React.createElement("rect", {
+    x: "13",
+    y: "8",
+    width: "2",
+    height: "2",
+    fill: "#FF0000"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "15",
+    y: "8",
+    width: "2",
+    height: "2",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "13",
+    y: "10",
+    width: "2",
+    height: "2",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "15",
+    y: "10",
+    width: "2",
+    height: "2",
+    fill: "#FF0000"
+  })),
+  Panama: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+    width: "15",
+    height: "10",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "15",
+    width: "15",
+    height: "10",
+    fill: "#DA121A"
+  }), /*#__PURE__*/React.createElement("rect", {
+    y: "10",
+    width: "15",
+    height: "10",
+    fill: "#072357"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "15",
+    y: "10",
+    width: "15",
+    height: "10",
+    fill: "#fff"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 7.5,
+    cy: 5,
+    r: 1.6,
+    fill: "#072357"
+  }), /*#__PURE__*/React.createElement(Star, {
+    cx: 22.5,
+    cy: 15,
+    r: 1.6,
+    fill: "#DA121A"
+  })),
+  Ghana: /*#__PURE__*/React.createElement(React.Fragment, null, hStripes(['#CE1126', '#FCD116', '#006B3F']), /*#__PURE__*/React.createElement(Star, {
+    cx: 15,
+    cy: 10,
+    r: 2.2,
+    fill: "#000000"
+  }))
+};
+function Flag({
+  team,
+  size = 16
+}) {
+  const h = Math.round(size * (20 / 30));
+  const content = FLAG_SVGS[team];
+  if (!content) {
+    return /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: size,
+        height: h,
+        borderRadius: 2,
+        background: T.borderLight,
+        fontSize: 7,
+        fontWeight: 700,
+        color: T.textTertiary,
+        flexShrink: 0
+      }
+    }, (team || '').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase());
+  }
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 30 20",
+    width: size,
+    height: h,
+    "aria-hidden": "true",
+    style: {
+      borderRadius: 2,
+      flexShrink: 0,
+      display: 'inline-block',
+      verticalAlign: 'middle',
+      border: '1px solid rgba(0,0,0,0.18)'
+    }
+  }, content);
+}
+
+// The actual offline snake draft, in the order it happened
+const DRAFT_PICKS = [{
+  player: 'Courtney',
+  team: 'Mexico'
+}, {
+  player: 'Brandon',
+  team: 'South Korea'
+}, {
+  player: 'Daniel',
+  team: 'Czechia'
+}, {
+  player: 'Courtney',
+  team: 'South Africa'
+}, {
+  player: 'Courtney',
+  team: 'Canada'
+}, {
+  player: 'Alyssa',
+  team: 'Switzerland'
+}, {
+  player: 'Brandon',
+  team: 'Bosnia and Herzegovina'
+}, {
+  player: 'Brandon',
+  team: 'Qatar'
+}, {
+  player: 'Brandon',
+  team: 'Brazil'
+}, {
+  player: 'Brandon',
+  team: 'Morocco'
+}, {
+  player: 'Courtney',
+  team: 'Haiti'
+}, {
+  player: 'Daniel',
+  team: 'Scotland'
+}, {
+  player: 'Courtney',
+  team: 'USA'
+}, {
+  player: 'Daniel',
+  team: 'Paraguay'
+}, {
+  player: 'Alyssa',
+  team: 'Australia'
+}, {
+  player: 'Alyssa',
+  team: 'Turkey'
+}, {
+  player: 'Daniel',
+  team: 'Germany'
+}, {
+  player: 'Alyssa',
+  team: 'Ecuador'
+}, {
+  player: 'Alyssa',
+  team: 'Ivory Coast'
+}, {
+  player: 'Daniel',
+  team: 'Curaçao'
+}, {
+  player: 'Daniel',
+  team: 'Netherlands'
+}, {
+  player: 'Daniel',
+  team: 'Japan'
+}, {
+  player: 'Daniel',
+  team: 'Sweden'
+}, {
+  player: 'Courtney',
+  team: 'Tunisia'
+}, {
+  player: 'Alyssa',
+  team: 'Belgium'
+}, {
+  player: 'Brandon',
+  team: 'Egypt'
+}, {
+  player: 'Brandon',
+  team: 'Iran'
+}, {
+  player: 'Brandon',
+  team: 'New Zealand'
+}, {
+  player: 'Alyssa',
+  team: 'Spain'
+}, {
+  player: 'Daniel',
+  team: 'Uruguay'
+}, {
+  player: 'Courtney',
+  team: 'Saudi Arabia'
+}, {
+  player: 'Alyssa',
+  team: 'Cape Verde'
+}, {
+  player: 'Courtney',
+  team: 'France'
+}, {
+  player: 'Courtney',
+  team: 'Senegal'
+}, {
+  player: 'Daniel',
+  team: 'Norway'
+}, {
+  player: 'Brandon',
+  team: 'Iraq'
+}, {
+  player: 'Courtney',
+  team: 'Argentina'
+}, {
+  player: 'Alyssa',
+  team: 'Algeria'
+}, {
+  player: 'Courtney',
+  team: 'Austria'
+}, {
+  player: 'Alyssa',
+  team: 'Jordan'
+}, {
+  player: 'Alyssa',
+  team: 'Portugal'
+}, {
+  player: 'Brandon',
+  team: 'Colombia'
+}, {
+  player: 'Alyssa',
+  team: 'DR Congo'
+}, {
+  player: 'Daniel',
+  team: 'Uzbekistan'
+}, {
+  player: 'Daniel',
+  team: 'England'
+}, {
+  player: 'Courtney',
+  team: 'Croatia'
+}, {
+  player: 'Brandon',
+  team: 'Ghana'
+}, {
+  player: 'Brandon',
+  team: 'Panama'
+}];
+const PICKS = DRAFT_PICKS.reduce((acc, {
+  player,
+  team
+}) => {
+  acc[team] = player;
+  return acc;
+}, {});
+const KO_ROUNDS = ['R32', 'R16', 'QF', 'SF', 'Final'];
+const KO_SIZES = {
+  R32: 16,
+  R16: 8,
+  QF: 4,
+  SF: 2,
+  Final: 1
+};
+const R32_SEEDS = [['1A', '2B'], ['1B', '2A'], ['1C', '2D'], ['1D', '2C'], ['1E', '2F'], ['1F', '2E'], ['1G', '2H'], ['1H', '2G'], ['1I', '2J'], ['1J', '2I'], ['1K', '2L'], ['1L', '2K'], ['3rd', '3rd'], ['3rd', '3rd'], ['3rd', '3rd'], ['3rd', '3rd']];
+
+// ═══════════════════ TEAM NAME NORMALIZATION ═══════════════════
+
+const TEAM_ALIASES = {
+  'mexico': 'Mexico',
+  'south korea': 'South Korea',
+  'korea republic': 'South Korea',
+  'korea': 'South Korea',
+  'south africa': 'South Africa',
+  'czechia': 'Czechia',
+  'czech republic': 'Czechia',
+  'canada': 'Canada',
+  'switzerland': 'Switzerland',
+  'qatar': 'Qatar',
+  'bosnia and herzegovina': 'Bosnia and Herzegovina',
+  'bosnia-herzegovina': 'Bosnia and Herzegovina',
+  'bosnia': 'Bosnia and Herzegovina',
+  'brazil': 'Brazil',
+  'morocco': 'Morocco',
+  'scotland': 'Scotland',
+  'haiti': 'Haiti',
+  'usa': 'USA',
+  'united states': 'USA',
+  'us': 'USA',
+  'united states of america': 'USA',
+  'australia': 'Australia',
+  'paraguay': 'Paraguay',
+  'turkey': 'Turkey',
+  'turkiye': 'Turkey',
+  'türkiye': 'Turkey',
+  'germany': 'Germany',
+  'ecuador': 'Ecuador',
+  'ivory coast': 'Ivory Coast',
+  "côte d'ivoire": 'Ivory Coast',
+  "cote d'ivoire": 'Ivory Coast',
+  'cote divoire': 'Ivory Coast',
+  'curacao': 'Curaçao',
+  'curaçao': 'Curaçao',
+  'netherlands': 'Netherlands',
+  'holland': 'Netherlands',
+  'japan': 'Japan',
+  'tunisia': 'Tunisia',
+  'sweden': 'Sweden',
+  'belgium': 'Belgium',
+  'iran': 'Iran',
+  'ir iran': 'Iran',
+  'egypt': 'Egypt',
+  'new zealand': 'New Zealand',
+  'spain': 'Spain',
+  'uruguay': 'Uruguay',
+  'saudi arabia': 'Saudi Arabia',
+  'cape verde': 'Cape Verde',
+  'cabo verde': 'Cape Verde',
+  'france': 'France',
+  'senegal': 'Senegal',
+  'norway': 'Norway',
+  'iraq': 'Iraq',
+  'argentina': 'Argentina',
+  'algeria': 'Algeria',
+  'austria': 'Austria',
+  'jordan': 'Jordan',
+  'portugal': 'Portugal',
+  'colombia': 'Colombia',
+  'dr congo': 'DR Congo',
+  'congo dr': 'DR Congo',
+  'democratic republic of the congo': 'DR Congo',
+  'dem. rep. congo': 'DR Congo',
+  'congo': 'DR Congo',
+  'uzbekistan': 'Uzbekistan',
+  'england': 'England',
+  'croatia': 'Croatia',
+  'ghana': 'Ghana',
+  'panama': 'Panama'
+};
+function normalizeTeam(name) {
+  if (!name) return null;
+  const key = String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+  return TEAM_ALIASES[key] || name;
+}
+
+// ═══════════════════ LIVE DATA — via Claude's own web search ═══════════════════
+// Direct browser fetch() to third-party sports APIs is blocked by this sandbox's
+// network policy, so live data is retrieved through the one externally-reachable
+// endpoint available to artifacts: api.anthropic.com, using its web_search tool.
+
+const GROUPS_TEXT = Object.entries(GROUPS).map(([g, teams]) => `Group ${g}: ${teams.join(', ')}`).join('\n');
+function buildCombinedPrompt() {
+  return `Search the web for the current 2026 FIFA World Cup (June 11 - July 19, 2026, USA/Canada/Mexico) group standings, full match schedule, AND the latest sportsbook odds for each team to advance past the group stage, all as of right now.
+
+Use exactly these team name spellings and group assignments:
+${GROUPS_TEXT}
+
+Find:
+1. Standings for all 12 groups: matches played, won, drawn, lost, goals for, goals against, points for every one of the 48 teams above.
+2. ALL 72 group-stage matches — completed, in progress, AND not yet played. Include official date AND kickoff time in UTC ISO 8601 (e.g. "2026-06-19T19:00:00Z"), group letter, both team names, both scores, and status. Unplayed matches: score1/score2 null, status "SCHEDULED". Include all 72.
+3. Any knockout-stage match (R32/R16/QF/SF/Final) that's completed, in progress, or has confirmed teams and a date.
+4. Current sportsbook American moneyline odds for each of the 48 teams to advance past the group stage (qualify for the Round of 32). Use DraftKings, FanDuel, BetMGM, or any major sportsbook. For already-eliminated teams use +100000; for already-clinched teams use -100000. Provide as a compact object with team names as keys and integer moneyline odds as values.
+
+Respond with ONLY compact, single-line JSON — no markdown, no code fences, no indentation, no commentary — in exactly this shape:
+{"standings":[{"team":"<name>","group":"<A-L>","mp":<int>,"w":<int>,"d":<int>,"l":<int>,"gf":<int>,"ga":<int>,"pts":<int>}],"matches":[{"stage":"group","group":"<A-L>","date":"<ISO 8601>","team1":"<name>","team2":"<name>","score1":<int or null>,"score2":<int or null>,"status":"<FT|LIVE|SCHEDULED>"}],"odds":{"Mexico":-1400,"South Korea":-310}}
+
+Keep JSON maximally compact. The odds object is just team name → integer moneyline. Never invent match results.`;
+}
+
+// Tries a normal parse first. If the response got cut off by the token limit before
+// finishing, salvages whatever keys it can — independently per key — so a truncation
+// inside "matches" doesn't also throw away a complete "standings" or "odds" object.
+function repairJSON(text) {
+  let t = (text || '').trim();
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const start = t.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found in response');
+  const body = t.slice(start);
+  const end = body.lastIndexOf('}');
+  if (end !== -1) {
+    try {
+      return JSON.parse(body.slice(0, end + 1));
+    } catch (e) {/* fall through to per-key repair */}
+  }
+  const result = {};
+  // Repair arrays (standings, matches)
+  ['standings', 'matches'].forEach(key => {
+    const m = body.match(new RegExp('"' + key + '"\\s*:\\s*\\['));
+    if (!m) return;
+    const arrStart = m.index + m[0].length;
+    let depth = 0,
+      lastGoodEnd = -1;
+    for (let i = arrStart; i < body.length; i++) {
+      const c = body[i];
+      if (c === '{') depth++;else if (c === '}') {
+        depth--;
+        if (depth === 0) lastGoodEnd = i;
+      } else if (c === ']' && depth === 0) {
+        break;
+      }
+    }
+    if (lastGoodEnd === -1) return;
+    try {
+      result[key] = JSON.parse('[' + body.slice(arrStart, lastGoodEnd + 1) + ']');
+    } catch (e) {}
+  });
+  // Repair odds object (flat, much smaller, often survives truncation)
+  const oddsMatch = body.match(/"odds"\s*:\s*\{/);
+  if (oddsMatch) {
+    const oStart = oddsMatch.index + oddsMatch[0].length - 1;
+    let depth = 0,
+      oEnd = -1;
+    for (let i = oStart; i < body.length; i++) {
+      if (body[i] === '{') depth++;else if (body[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          oEnd = i;
+          break;
+        }
+      }
+    }
+    if (oEnd !== -1) {
+      try {
+        result.odds = JSON.parse(body.slice(oStart, oEnd + 1));
+      } catch (e) {}
+    }
+  }
+  if (!result.standings && !result.matches) throw new Error('Could not parse or repair JSON response');
+  return result;
+}
+function normalizeStatus(status) {
+  const up = String(status || '').toUpperCase();
+  if (up.includes('LIVE') || up === 'HT' || up === '1H' || up === '2H' || up.includes('IN PROGRESS')) return {
+    state: 'in',
+    completed: false
+  };
+  if (up === 'FT' || up.includes('FULL') || up.includes('FINISHED') || up.includes('FINAL') || up.includes('AET') || up.includes('PEN')) return {
+    state: 'post',
+    completed: true
+  };
+  return {
+    state: 'pre',
+    completed: false
+  };
+}
+function parseStandings(parsed) {
+  return Array.isArray(parsed.standings) ? parsed.standings : [];
+}
+function parseMatches(parsed) {
+  return (Array.isArray(parsed.matches) ? parsed.matches : []).map(m => {
+    const {
+      state,
+      completed
+    } = normalizeStatus(m.status);
+    const t1 = normalizeTeam(m.team1),
+      t2 = normalizeTeam(m.team2);
+    const stage = m.stage === 'knockout' ? 'knockout' : 'group';
+    const group = stage === 'group' ? m.group || null : null;
+    const round = stage === 'knockout' ? m.round || null : null;
+    return {
+      id: `${stage}|${group || round}|${t1}|${t2}`,
+      stage,
+      date: m.date || null,
+      group,
+      round,
+      t1,
+      t2,
+      s1: m.score1 === undefined || m.score1 === null || m.score1 === '' ? null : Number(m.score1),
+      s2: m.score2 === undefined || m.score2 === null || m.score2 === '' ? null : Number(m.score2),
+      state,
+      completed,
+      statusDetail: m.status || ''
+    };
+  }).filter(m => m.t1 && m.t2);
+}
+async function fetchFromAISearch() {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8000,
+      messages: [{
+        role: 'user',
+        content: buildCombinedPrompt()
+      }],
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search'
+      }]
+    })
+  });
+  if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+  const data = await res.json();
+  const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text);
+  const fullText = textBlocks.join('\n');
+  if (!fullText.trim()) throw new Error('Empty response from search');
+  const parsed = repairJSON(fullText);
+  // Normalize the raw odds dict (American moneyline → vig-removed implied probs per group)
+  const rawOdds = parsed.odds && typeof parsed.odds === 'object' ? parsed.odds : null;
+  const liveOdds = rawOdds ? normalizeOddsDict(rawOdds) : null;
+  return {
+    standings: parseStandings(parsed),
+    matches: parseMatches(parsed),
+    liveOdds
+  };
+}
+
+// ── Direct ESPN scoreboard fetch ──────────────────────────────────────────
+// This is a real, free, public sports data feed with no API key, no rate
+// limit problems, and no LLM cost — but a plain browser fetch() to it is
+// blocked by Claude.ai's artifact sandbox network policy. It works fine from
+// any normal web page (this file hosted anywhere outside claude.ai), which is
+// why it's tried first below, with the AI-search method as an automatic
+// fallback for the in-artifact context where this direct call can't reach out.
+
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=300';
+const KO_DATE_RANGES = {
+  R32: ['2026-06-28', '2026-07-03'],
+  R16: ['2026-07-04', '2026-07-07'],
+  QF: ['2026-07-09', '2026-07-11'],
+  SF: ['2026-07-14', '2026-07-15'],
+  Third: ['2026-07-18', '2026-07-18'],
+  Final: ['2026-07-19', '2026-07-19']
+};
+function getRoundForDate(isoDate) {
+  const d = (isoDate || '').slice(0, 10);
+  for (const [round, [start, end]] of Object.entries(KO_DATE_RANGES)) {
+    if (d >= start && d <= end) return round;
+  }
+  return null;
+}
+function parseESPNEvents(json) {
+  const events = json && json.events || [];
+  return events.map(ev => {
+    const comp = ev.competitions && ev.competitions[0] || {};
+    const statusType = comp.status && comp.status.type || {};
+    const competitors = comp.competitors || [];
+    const home = competitors.find(c => c.homeAway === 'home') || {};
+    const away = competitors.find(c => c.homeAway === 'away') || {};
+    const note = comp.altGameNote || '';
+    const groupMatch = /Group\s+([A-L])/i.exec(note);
+    const group = groupMatch ? groupMatch[1] : null;
+    const stage = group ? 'group' : 'knockout';
+    const round = stage === 'knockout' ? getRoundForDate(ev.date || '') : null;
+    const t1 = normalizeTeam(home.team && home.team.displayName);
+    const t2 = normalizeTeam(away.team && away.team.displayName);
+    return {
+      id: `${stage}|${group || round}|${t1}|${t2}`,
+      stage,
+      date: ev.date || null,
+      group,
+      round,
+      t1,
+      t2,
+      s1: home.score !== undefined && home.score !== null && home.score !== '' ? Number(home.score) : null,
+      s2: away.score !== undefined && away.score !== null && away.score !== '' ? Number(away.score) : null,
+      state: statusType.state || 'pre',
+      completed: !!statusType.completed,
+      statusDetail: statusType.shortDetail || statusType.detail || ''
+    };
+  }).filter(m => m.t1 && m.t2);
+}
+function computeStandingsFromMatches(groupMatches) {
+  const acc = {};
+  ALL_TEAMS.forEach(t => {
+    const group = Object.entries(GROUPS).find(([, ts]) => ts.includes(t))[0];
+    acc[t] = {
+      team: t,
+      group,
+      mp: 0,
+      w: 0,
+      d: 0,
+      l: 0,
+      gf: 0,
+      ga: 0,
+      pts: 0
+    };
+  });
+  groupMatches.forEach(m => {
+    if (!m.completed || m.s1 === null || m.s2 === null) return;
+    if (!acc[m.t1] || !acc[m.t2]) return;
+    acc[m.t1].mp++;
+    acc[m.t2].mp++;
+    acc[m.t1].gf += m.s1;
+    acc[m.t1].ga += m.s2;
+    acc[m.t2].gf += m.s2;
+    acc[m.t2].ga += m.s1;
+    if (m.s1 > m.s2) {
+      acc[m.t1].w++;
+      acc[m.t1].pts += 3;
+      acc[m.t2].l++;
+    } else if (m.s2 > m.s1) {
+      acc[m.t2].w++;
+      acc[m.t2].pts += 3;
+      acc[m.t1].l++;
+    } else {
+      acc[m.t1].d++;
+      acc[m.t1].pts++;
+      acc[m.t2].d++;
+      acc[m.t2].pts++;
+    }
+  });
+  return Object.values(acc);
+}
+async function fetchFromESPN() {
+  const res = await fetch(ESPN_URL);
+  if (!res.ok) throw new Error('ESPN request failed (' + res.status + ')');
+  const json = await res.json();
+  const matches = parseESPNEvents(json);
+  if (!matches.length) throw new Error('ESPN response had no events');
+  const standings = computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+  return {
+    standings,
+    matches,
+    liveOdds: null
+  }; // ESPN has no odds endpoint; liveOdds come from AI-search
+}
+
+// Tries the direct, fast, free ESPN feed first (works when this page is hosted
+// normally); falls back to the AI-search method only if that direct call can't
+// reach out, which is exactly the situation inside Claude.ai's artifact sandbox.
+async function fetchLiveData() {
+  try {
+    const result = await fetchFromESPN();
+    return {
+      ...result,
+      source: 'espn'
+    };
+  } catch (espnErr) {
+    try {
+      const result = await fetchFromAISearch();
+      return {
+        ...result,
+        source: 'ai-search'
+      };
+    } catch (aiErr) {
+      throw new Error('ESPN: ' + espnErr.message + ' · AI search: ' + aiErr.message);
+    }
+  }
+}
+function mergeMatches(oldList, newList) {
+  const map = new Map();
+  oldList.forEach(m => map.set(m.id, m));
+  newList.forEach(m => map.set(m.id, m));
+  return Array.from(map.values());
+}
+
+// ═══════════════════ STORAGE (cache last good fetch) ═══════════════════
+
+const CACHE_KEY = 'wc2026-live-cache-v3';
+const saveCache = async state => {
+  try {
+    await window.storage.set(CACHE_KEY, JSON.stringify(state));
+  } catch {}
+};
+const loadCache = async () => {
+  try {
+    const r = await window.storage.get(CACHE_KEY);
+    return r ? JSON.parse(r.value) : null;
+  } catch {
+    return null;
+  }
+};
+
+// ═══════════════════ STATS / STANDINGS HELPERS ═══════════════════
+
+const statsFromStandings = standingsArr => {
+  const s = {};
+  ALL_TEAMS.forEach(t => {
+    const group = Object.entries(GROUPS).find(([, ts]) => ts.includes(t))[0];
+    s[t] = {
+      t,
+      group,
+      mp: 0,
+      w: 0,
+      d: 0,
+      l: 0,
+      gf: 0,
+      ga: 0,
+      pts: 0
+    };
+  });
+  (standingsArr || []).forEach(row => {
+    const team = normalizeTeam(row.team);
+    if (!s[team]) return;
+    s[team] = {
+      ...s[team],
+      mp: Number(row.mp) || 0,
+      w: Number(row.w) || 0,
+      d: Number(row.d) || 0,
+      l: Number(row.l) || 0,
+      gf: Number(row.gf) || 0,
+      ga: Number(row.ga) || 0,
+      pts: Number(row.pts) || 0
+    };
+  });
+  return s;
+};
+
+// FIFA's official 2026 World Cup regulations (Article 13) changed the group-stage
+// tiebreaker order from previous tournaments: when teams are level on points, results
+// between the tied teams (head-to-head points, then h2h goal difference, then h2h
+// goals scored) are now checked BEFORE overall group goal difference/goals scored.
+// This only applies within a group (head-to-head is meaningless across groups, which
+// is why the cross-group third-place wildcard ranking skips straight to overall GD).
+const h2hCompare = (group, a, b, groupMatches) => {
+  const m = (groupMatches || []).find(ev => ev.group === group && ev.completed && ev.s1 !== null && ev.s2 !== null && (ev.t1 === a && ev.t2 === b || ev.t1 === b && ev.t2 === a));
+  if (!m) return 0; // haven't played each other (yet) — can't use head-to-head
+  const aIsT1 = m.t1 === a;
+  const aGf = aIsT1 ? m.s1 : m.s2;
+  const aGa = aIsT1 ? m.s2 : m.s1;
+  const aPts = aGf > aGa ? 3 : aGf === aGa ? 1 : 0;
+  const bPts = aGa > aGf ? 3 : aGa === aGf ? 1 : 0;
+  if (aPts !== bPts) return aPts - bPts; // head-to-head points
+  if (aGf !== aGa) return aGf - aGa; // head-to-head goal difference (and goals scored, equivalent for a single match)
+  return 0;
+};
+const sortGroup = (teams, stats, groupMatches) => [...teams].sort((a, b) => {
+  const sa = stats[a],
+    sb = stats[b];
+  if (sb.pts !== sa.pts) return sb.pts - sa.pts;
+  const h2h = h2hCompare(sa.group, a, b, groupMatches);
+  if (h2h !== 0) return -h2h;
+  if (sb.gf - sb.ga !== sa.gf - sa.ga) return sb.gf - sb.ga - (sa.gf - sa.ga);
+  return sb.gf - sa.gf;
+});
+const getStandings = (stats, groupMatches) => {
+  const gs = {};
+  Object.entries(GROUPS).forEach(([g, teams]) => {
+    gs[g] = sortGroup(teams, stats, groupMatches);
+  });
+  return gs;
+};
+
+// A team has clinched top-2 in its own group if, even in the worst case for them
+// (zero more points) and the best case for every rival (maximum possible points
+// from remaining matches), fewer than 2 rivals could still finish AHEAD of them.
+// This is computed against ALL other teams in the group, not just whoever currently
+// sits 3rd, so it stays correct even if the group order shifts. Per FIFA's 2026
+// regulations (Article 13), head-to-head result beats overall goal difference when
+// teams are level on points — so if a rival could only ever TIE this team's points,
+// and this team already won the head-to-head match between them, that rival isn't
+// a real threat (the tiebreak is already decided in this team's favor).
+const hasClinchedTop2 = (team, stats, standings, groupMatches) => {
+  const s = stats[team];
+  if (!s) return false;
+  const st = standings[s.group];
+  if (!st) return false;
+  const myFloor = s.pts;
+  const threats = st.filter(t => {
+    if (t === team) return false;
+    const ts = stats[t];
+    const ceiling = ts.pts + (3 - ts.mp) * 3;
+    if (ceiling < myFloor) return false;
+    if (ceiling > myFloor) return true;
+    // ceiling === myFloor: only an exact points tie could let this rival catch up.
+    // If we've already played them and I won the head-to-head tiebreak, that's not
+    // a real threat — I'd win any such tie outright under FIFA's 2026 rules.
+    const h2h = h2hCompare(s.group, team, t, groupMatches);
+    return h2h <= 0;
+  }).length;
+  return threats < 2;
+};
+
+// All 12 groups' current 3rd-place teams, the pool competing for the 8 wildcard slots.
+const getAllThirds = (stats, standings) => Object.keys(GROUPS).map(g => {
+  const t = standings[g] && standings[g][2];
+  return t ? {
+    team: t,
+    pts: stats[t].pts,
+    mp: stats[t].mp
+  } : null;
+}).filter(Boolean);
+
+// A currently-3rd-place team has clinched a wildcard spot if, even in their own
+// worst case, fewer than 8 of the other 11 third-place teams could possibly catch
+// or tie them on points — guaranteeing a top-8 finish among all the thirds.
+const hasClinchedWildcard = (team, stats, standings) => {
+  const s = stats[team];
+  if (!s) return false;
+  const st = standings[s.group];
+  if (!st) return false;
+  if (st.indexOf(team) !== 2) return false;
+  const thirds = getAllThirds(stats, standings);
+  const me = thirds.find(x => x.team === team);
+  if (!me) return false;
+  const myFloor = me.pts;
+  const threats = thirds.filter(x => x.team !== team && x.pts + (3 - x.mp) * 3 >= myFloor).length;
+  return threats < 8;
+};
+
+// Could this team still possibly reach a wildcard spot at all (not yet eliminated
+// from that race), checked against every other group's 3rd-place ceiling/floor.
+const canStillReachWildcard = (team, stats, standings) => {
+  const s = stats[team];
+  if (!s) return false;
+  const st = standings[s.group];
+  if (!st) return false;
+  const rem = 3 - s.mp;
+  const pos = st.indexOf(team);
+  // If this team's own group is already finished, the only way into the wildcard
+  // pool is having actually finished 3rd in it — that's now fixed, not a possibility.
+  if (rem === 0 && pos !== 2) return false;
+  const myCeiling = s.pts + rem * 3;
+  const thirds = getAllThirds(stats, standings).filter(x => x.team !== team);
+  const definitelyAhead = thirds.filter(x => x.pts >= myCeiling).length;
+  return definitelyAhead < 8;
+};
+const hasClinchedAdvancement = (team, stats, standings, groupMatches) => hasClinchedTop2(team, stats, standings, groupMatches) || hasClinchedWildcard(team, stats, standings);
+const isEliminated = (team, stats, standings) => {
+  const s = stats[team];
+  if (!s || s.mp === 0) return false;
+  const st = standings[s.group];
+  if (!st) return false;
+  const rem = 3 - s.mp;
+  const myCeiling = s.pts + rem * 3;
+  const guaranteedAheadForTop2 = st.filter(t => t !== team && stats[t].pts > myCeiling).length;
+  if (guaranteedAheadForTop2 < 2) return false; // top-2 still mathematically reachable
+  return !canStillReachWildcard(team, stats, standings);
+};
+
+// Returns the best available implied probability for a team to advance past the group stage.
+// Priority order:
+//   1. Mathematically clinched → 1.0 exactly
+//   2. Mathematically eliminated → 0.0 exactly
+//   3. liveOdds (current sportsbook odds fetched this session, vig-normalized) → use directly
+//   4. SEED_ODDS (pre-tournament odds normalized per group, updated June 23 2026) → fallback
+// The returned value is always a clean 0–1 implied probability.
+const getAdvProb = (team, stats, standings, groupMatches, liveOdds) => {
+  if (hasClinchedAdvancement(team, stats, standings, groupMatches)) return 1.0;
+  if (isEliminated(team, stats, standings)) return 0.0;
+  if (liveOdds && liveOdds[team] !== undefined) return liveOdds[team];
+  return SEED_ODDS[team] ?? 0.5;
+};
+const getClinch = (team, stats, standings, groupMatches) => {
+  const s = stats[team];
+  if (!s || s.mp === 0) return null;
+  const st = standings[s.group];
+  if (!st) return null;
+  const pos = st.indexOf(team);
+  if (isEliminated(team, stats, standings)) return 'ELIMINATED';
+  if (hasClinchedTop2(team, stats, standings, groupMatches)) return pos === 0 ? 'FIRST' : 'SECOND';
+  if (hasClinchedWildcard(team, stats, standings)) return 'WILDCARD';
+  if (pos === 2) return 'WILDCARD_MAYBE';
+  return null;
+};
+const fmtTime = iso => {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  } catch {
+    return iso;
+  }
+};
+
+// ═══════════════════ SUB-COMPONENTS ═══════════════════
+
+const ClinchedCheck = ({
+  compact
+}) => /*#__PURE__*/React.createElement("span", {
+  style: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: compact ? 0 : 4,
+    color: T.green,
+    fontWeight: 700,
+    fontSize: 11
+  },
+  title: "Mathematically clinched: this team is guaranteed to advance past the group stage"
+}, /*#__PURE__*/React.createElement("svg", {
+  width: "13",
+  height: "13",
+  viewBox: "0 0 16 16",
+  fill: "none",
+  "aria-hidden": "true"
+}, /*#__PURE__*/React.createElement("path", {
+  d: "M3 8.5L6.5 12L13 4",
+  stroke: T.green,
+  strokeWidth: "2.4",
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+})), !compact && 'Clinched');
+const EliminatedX = ({
+  compact
+}) => /*#__PURE__*/React.createElement("span", {
+  style: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: compact ? 0 : 4,
+    color: T.red,
+    fontWeight: 700,
+    fontSize: 11
+  },
+  title: "Mathematically eliminated: this team can no longer reach the knockout stage"
+}, /*#__PURE__*/React.createElement("svg", {
+  width: "13",
+  height: "13",
+  viewBox: "0 0 16 16",
+  fill: "none",
+  "aria-hidden": "true"
+}, /*#__PURE__*/React.createElement("path", {
+  d: "M4 4L12 12M12 4L4 12",
+  stroke: T.red,
+  strokeWidth: "2.4",
+  strokeLinecap: "round"
+})), !compact && 'Eliminated');
+const ProbBar = ({
+  prob
+}) => {
+  const pct = Math.round(prob * 100);
+  const color = pct >= 80 ? T.green : pct >= 50 ? T.gold : pct >= 20 ? '#C2693A' : T.textFaint;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5
+    },
+    title: "Estimated chance of finishing top 2 in group (or as a top-8 third-place team) and reaching the Round of 32"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 5,
+      background: T.borderLight,
+      borderRadius: 3,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: `${pct}%`,
+      height: '100%',
+      background: color,
+      borderRadius: 3
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color,
+      fontWeight: 700,
+      minWidth: 30
+    }
+  }, pct, "%"));
+};
+const StatusBadge = ({
+  ev
+}) => {
+  if (ev.state === 'in') {
+    return /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 700,
+        color: T.red
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 6,
+        height: 6,
+        borderRadius: '50%',
+        background: T.red
+      }
+    }), ev.statusDetail || 'LIVE');
+  }
+  if (ev.completed) return /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: T.textTertiary
+    }
+  }, "FT");
+  return /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.textFaint
+    }
+  }, fmtTime(ev.date));
+};
+
+// ═══════════════════ DRAFT RECAP TAB ═══════════════════
+
+function DraftRecapTab() {
+  const playerPicks = {};
+  PLAYERS.forEach(p => {
+    playerPicks[p] = [];
+  });
+  DRAFT_PICKS.forEach(({
+    player,
+    team
+  }) => playerPicks[player].push(team));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: '12px 18px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.green,
+      fontWeight: 700,
+      fontSize: 14
+    }
+  }, "✓ Draft complete"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: T.textTertiary
+    }
+  }, "48 teams drafted across 4 players")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4, 1fr)',
+      gap: 10
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderTop: `3px solid ${PC[p].hex}`,
+      borderRadius: 4,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13,
+      color: PC[p].hex
+    }
+  }, p), /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: 'auto',
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, playerPicks[p].length, "/12")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 3
+    }
+  }, playerPicks[p].map(team => /*#__PURE__*/React.createElement("div", {
+    key: team,
+    style: {
+      fontSize: 11,
+      color: T.textPrimary,
+      padding: '3px 0',
+      borderBottom: `1px solid ${T.borderLight}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Flag, {
+    team: team,
+    size: 14
+  }), /*#__PURE__*/React.createElement("span", null, team), /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: 'auto',
+      fontSize: 9,
+      color: T.textFaint
+    }
+  }, "G", Object.entries(GROUPS).find(([, ts]) => ts.includes(team))?.[0]))))))));
+}
+
+// ═══════════════════ GROUP STAGE TAB ═══════════════════
+
+const COLUMNS = [{
+  key: 'team',
+  label: 'Team'
+}, {
+  key: 'group',
+  label: 'Grp'
+}, {
+  key: 'mp',
+  label: 'MP'
+}, {
+  key: 'w',
+  label: 'W'
+}, {
+  key: 'd',
+  label: 'D'
+}, {
+  key: 'l',
+  label: 'L'
+}, {
+  key: 'gf',
+  label: 'GF'
+}, {
+  key: 'ga',
+  label: 'GA'
+}, {
+  key: 'gd',
+  label: 'GD'
+}, {
+  key: 'pts',
+  label: 'Pts'
+}, {
+  key: 'prob',
+  label: 'Probability to advance past group stage'
+}];
+function getSortValue(team, key, stats, standings, groupMatches, liveOdds) {
+  const s = stats[team];
+  switch (key) {
+    case 'team':
+      return team;
+    case 'group':
+      return s.group;
+    case 'mp':
+      return s.mp;
+    case 'w':
+      return s.w;
+    case 'd':
+      return s.d;
+    case 'l':
+      return s.l;
+    case 'gf':
+      return s.gf;
+    case 'ga':
+      return s.ga;
+    case 'gd':
+      return s.gf - s.ga;
+    case 'pts':
+      return s.pts;
+    case 'prob':
+      return getAdvProb(team, stats, standings, groupMatches, liveOdds);
+    default:
+      return 0;
+  }
+}
+function GroupStageTab({
+  groupEvents,
+  stats,
+  standings,
+  liveOdds
+}) {
+  const [activePlayer, setActivePlayer] = useState(PLAYERS[0]);
+  const [scheduleGroup, setScheduleGroup] = useState('ALL');
+  const [showSchedule, setShowSchedule] = useState(true);
+  const [sortKey, setSortKey] = useState('pts');
+  const [sortDir, setSortDir] = useState(-1);
+  const onHeaderClick = key => {
+    if (key === sortKey) {
+      setSortDir(d => -d);
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'team' || key === 'group' ? 1 : -1);
+    }
+  };
+  const playerTeams = PLAYERS.reduce((acc, p) => {
+    acc[p] = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    return acc;
+  }, {});
+  const totals = player => {
+    const teams = playerTeams[player];
+    return teams.reduce((acc, t) => {
+      const s = stats[t];
+      return {
+        w: acc.w + s.w,
+        d: acc.d + s.d,
+        l: acc.l + s.l,
+        pts: acc.pts + s.pts,
+        mp: acc.mp + s.mp
+      };
+    }, {
+      w: 0,
+      d: 0,
+      l: 0,
+      pts: 0,
+      mp: 0
+    });
+  };
+
+  // Predicted teams each owner has reaching the knockout round.
+  // Each team's getAdvProb() gives its probability of advancing; summing across
+  // a player's 12 teams gives the expected number that progress. Scaled so the
+  // grand total across all 4 players sums to exactly 32 (the knockout round size).
+  const rawPredicted = PLAYERS.reduce((acc, p) => {
+    acc[p] = playerTeams[p].reduce((sum, t) => sum + getAdvProb(t, stats, standings, groupEvents, liveOdds), 0);
+    return acc;
+  }, {});
+  const rawTotal = Object.values(rawPredicted).reduce((a, b) => a + b, 0);
+  const scale = rawTotal > 0 ? 32 / rawTotal : 1;
+  const predicted = PLAYERS.reduce((acc, p) => {
+    acc[p] = rawPredicted[p] * scale;
+    return acc;
+  }, {});
+
+  // Per-player derived stats for ranking
+  const playerData = PLAYERS.map(p => {
+    const tot = totals(p);
+    const clinchStatuses = playerTeams[p].map(t => getClinch(t, stats, standings, groupEvents));
+    const clinched = clinchStatuses.filter(c => c === 'FIRST' || c === 'SECOND' || c === 'WILDCARD').length;
+    const eliminated = clinchStatuses.filter(c => c === 'ELIMINATED').length;
+    const alive = playerTeams[p].length - eliminated;
+    return {
+      p,
+      tot,
+      clinched,
+      eliminated,
+      alive,
+      pred: predicted[p]
+    };
+  });
+
+  // Two ranking orderings
+  const rankByPts = [...PLAYERS].sort((a, b) => totals(b).pts - totals(a).pts);
+  const rankByClinch = [...PLAYERS].sort((a, b) => {
+    const pd = playerData.find(x => x.p === b).clinched - playerData.find(x => x.p === a).clinched;
+    return pd !== 0 ? pd : totals(b).pts - totals(a).pts;
+  });
+  const getRankLabel = rank => ['🥇', '🥈', '🥉', '4'][rank] ?? `${rank + 1}`;
+  const activeTeams = activePlayer === 'ALL' ? ALL_TEAMS : playerTeams[activePlayer];
+  const liveNow = groupEvents.filter(e => e.state === 'in');
+  const totalAlive = ALL_TEAMS.filter(t => getClinch(t, stats, standings, groupEvents) !== 'ELIMINATED').length;
+  const matchesPlayed = groupEvents.filter(e => e.completed).length;
+  const sortedTeams = [...activeTeams].sort((a, b) => {
+    const va = getSortValue(a, sortKey, stats, standings, groupEvents, liveOdds);
+    const vb = getSortValue(b, sortKey, stats, standings, groupEvents, liveOdds);
+    if (va < vb) return -1 * sortDir;
+    if (va > vb) return 1 * sortDir;
+    return 0;
+  });
+  const sortedSchedule = [...groupEvents].filter(e => scheduleGroup === 'ALL' || e.group === scheduleGroup).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12
+    }
+  }, liveNow.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(178,58,46,0.06)',
+      border: `1px solid rgba(178,58,46,0.3)`,
+      borderRadius: 4,
+      padding: '10px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: T.red,
+      letterSpacing: 1,
+      marginBottom: 6
+    }
+  }, "● LIVE NOW"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6
+    }
+  }, liveNow.map(ev => /*#__PURE__*/React.createElement("div", {
+    key: ev.id,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent,
+      fontWeight: 700,
+      fontSize: 10
+    }
+  }, "G", ev.group), /*#__PURE__*/React.createElement(Flag, {
+    team: ev.t1,
+    size: 14
+  }), /*#__PURE__*/React.createElement("span", null, ev.t1), /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: PICKS[ev.t1]
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      color: T.accent
+    }
+  }, ev.s1, " – ", ev.s2), /*#__PURE__*/React.createElement("span", null, ev.t2), /*#__PURE__*/React.createElement(Flag, {
+    team: ev.t2,
+    size: 14
+  }), /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: PICKS[ev.t2]
+  }), /*#__PURE__*/React.createElement(StatusBadge, {
+    ev: ev
+  }))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 8
+    }
+  }, [{
+    label: 'Points ranking',
+    order: rankByPts,
+    getValue: p => `${totals(p).pts} pts`
+  }, {
+    label: 'Teams Advancing to Knockout Round',
+    order: rankByClinch,
+    getValue: p => `${playerData.find(x => x.p === p).clinched} advancing`
+  }].map(({
+    label,
+    order,
+    getValue
+  }) => /*#__PURE__*/React.createElement("div", {
+    key: label,
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: '8px 12px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: T.textFaint,
+      textTransform: 'uppercase',
+      letterSpacing: '0.8px',
+      marginBottom: 7
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 5
+    }
+  }, order.map((p, i) => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 14,
+      width: 22,
+      flexShrink: 0,
+      lineHeight: 1
+    }
+  }, getRankLabel(i)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 3,
+      height: 16,
+      borderRadius: 2,
+      background: PC[p].hex,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: PC[p].hex,
+      flex: 1
+    }
+  }, p), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 600,
+      color: T.textSecondary
+    }
+  }, getValue(p)))))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 8
+    }
+  }, playerData.map(({
+    p,
+    tot,
+    clinched,
+    eliminated,
+    alive,
+    pred
+  }) => {
+    const isActive = p === activePlayer;
+    return /*#__PURE__*/React.createElement("button", {
+      key: p,
+      onClick: () => setActivePlayer(p),
+      style: {
+        background: isActive ? PC[p].subtle : T.card,
+        border: `1px solid ${isActive ? PC[p].hex : T.border}`,
+        borderTop: `3px solid ${PC[p].hex}`,
+        borderRadius: 4,
+        padding: '10px 12px',
+        cursor: 'pointer',
+        textAlign: 'left'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 700,
+        fontSize: 13,
+        color: PC[p].hex,
+        marginBottom: 8
+      }
+    }, p), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '3px 8px',
+        fontSize: 11
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textTertiary
+      }
+    }, "PTS "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textPrimary,
+        fontWeight: 700
+      }
+    }, tot.pts)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textTertiary
+      }
+    }, "W/D/L "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textPrimary,
+        fontWeight: 600
+      }
+    }, tot.w, "/", tot.d, "/", tot.l)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textTertiary
+      }
+    }, "PRED. ADV "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.blue,
+        fontWeight: 700
+      }
+    }, pred.toFixed(1))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textTertiary
+      }
+    }, "ADVANCING "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.green,
+        fontWeight: 700
+      }
+    }, clinched)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textTertiary
+      }
+    }, "ELIM "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.red,
+        fontWeight: 700
+      }
+    }, eliminated))));
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setActivePlayer('ALL'),
+    style: {
+      background: activePlayer === 'ALL' ? T.accentSubtle : T.card,
+      border: `1px solid ${activePlayer === 'ALL' ? T.accent : T.border}`,
+      borderRadius: 4,
+      padding: '8px 14px',
+      cursor: 'pointer',
+      textAlign: 'left',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent,
+      fontWeight: 700,
+      fontSize: 13
+    }
+  }, "All 48 teams"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, "Alive: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: T.accent
+    }
+  }, totalAlive, "/48"), "\xA0·\xA0Played: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: T.textPrimary
+    }
+  }, matchesPlayed, "/72"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 16px',
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: activePlayer === 'ALL' ? T.accent : PC[activePlayer].hex,
+      fontWeight: 700,
+      fontSize: 14
+    }
+  }, activePlayer === 'ALL' ? 'All 48 teams' : `${activePlayer}'s teams`), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary,
+      marginLeft: 'auto'
+    }
+  }, activeTeams.length, " teams · tap column to sort")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      overflowX: 'auto',
+      WebkitOverflowScrolling: 'touch'
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: 12,
+      minWidth: 520
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: T.cardAlt
+    }
+  }, COLUMNS.map(col => /*#__PURE__*/React.createElement("th", {
+    key: col.key,
+    onClick: () => onHeaderClick(col.key),
+    style: {
+      padding: '7px 8px',
+      textAlign: 'left',
+      color: sortKey === col.key ? T.accent : T.textTertiary,
+      fontWeight: 700,
+      fontSize: 10,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      whiteSpace: 'nowrap',
+      cursor: 'pointer',
+      userSelect: 'none',
+      borderBottom: `2px solid ${T.border}`
+    }
+  }, col.label, sortKey === col.key ? sortDir === 1 ? ' ▲' : ' ▼' : '')))), /*#__PURE__*/React.createElement("tbody", null, sortedTeams.map((team, idx) => {
+    const s = stats[team];
+    const clinch = getClinch(team, stats, standings, groupEvents);
+    const prob = getAdvProb(team, stats, standings, groupEvents, liveOdds);
+    const isElim = clinch === 'ELIMINATED';
+    const clinchedAdvancement = clinch === 'FIRST' || clinch === 'SECOND' || clinch === 'WILDCARD';
+    return /*#__PURE__*/React.createElement("tr", {
+      key: team,
+      style: {
+        borderTop: `1px solid ${T.borderLight}`,
+        background: idx % 2 === 0 ? T.card : T.cardAlt,
+        opacity: isElim ? 0.55 : 1
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        whiteSpace: 'nowrap'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5
+      }
+    }, /*#__PURE__*/React.createElement(Flag, {
+      team: team,
+      size: 15
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.textPrimary,
+        fontWeight: 500,
+        fontSize: 11
+      }
+    }, team), /*#__PURE__*/React.createElement(OwnerBadge, {
+      owner: PICKS[team]
+    }))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.accent,
+        fontWeight: 700
+      }
+    }, s.group), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.textSecondary
+      }
+    }, s.mp), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.green,
+        fontWeight: 700
+      }
+    }, s.w), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.gold
+      }
+    }, s.d), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.red
+      }
+    }, s.l), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.textSecondary
+      }
+    }, s.gf), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.textSecondary
+      }
+    }, s.ga), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: s.gf - s.ga >= 0 ? T.textSecondary : T.red
+      }
+    }, s.gf - s.ga > 0 ? '+' : '', s.gf - s.ga), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px',
+        color: T.textPrimary,
+        fontWeight: 700
+      }
+    }, s.pts), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '7px 8px'
+      }
+    }, clinchedAdvancement ? /*#__PURE__*/React.createElement(ClinchedCheck, null) : isElim ? /*#__PURE__*/React.createElement(EliminatedX, null) : /*#__PURE__*/React.createElement(ProbBar, {
+      prob: prob
+    })));
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '8px 14px',
+      borderTop: `1px solid ${T.borderLight}`,
+      fontSize: 10,
+      color: T.textTertiary,
+      lineHeight: 1.5
+    }
+  }, /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: T.textSecondary
+    }
+  }, "Probability"), " = sportsbook-implied odds (vig removed). ✓ Clinched or ✕ Eliminated once mathematically certain.")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowSchedule(!showSchedule),
+    style: {
+      padding: '9px 16px',
+      borderRadius: 4,
+      border: `1px solid ${T.border}`,
+      background: showSchedule ? T.cardAlt : T.card,
+      color: T.textSecondary,
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: 'pointer',
+      textAlign: 'left',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8
+    }
+  }, showSchedule ? '▲ Hide' : '▼ Show', " schedule & results (all 72 matches)"), showSchedule && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      borderBottom: `1px solid ${T.border}`,
+      overflowX: 'auto',
+      WebkitOverflowScrolling: 'touch'
+    }
+  }, ['ALL', ...Object.keys(GROUPS)].map(g => /*#__PURE__*/React.createElement("button", {
+    key: g,
+    onClick: () => setScheduleGroup(g),
+    style: {
+      padding: '8px 12px',
+      fontSize: 11,
+      fontWeight: 700,
+      cursor: 'pointer',
+      background: scheduleGroup === g ? T.cardAlt : 'transparent',
+      color: scheduleGroup === g ? T.accent : T.textTertiary,
+      border: 'none',
+      borderBottom: scheduleGroup === g ? `2px solid ${T.accent}` : '2px solid transparent',
+      flexShrink: 0
+    }
+  }, g === 'ALL' ? 'All' : `G${g}`))), scheduleGroup === 'ALL' ?
+  /*#__PURE__*/
+  /* All 12 groups in a responsive grid */
+  React.createElement("div", {
+    style: {
+      padding: '12px 12px 8px',
+      borderBottom: `1px solid ${T.border}`,
+      background: T.cardAlt
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: T.textFaint,
+      textTransform: 'uppercase',
+      letterSpacing: '0.8px',
+      marginBottom: 10
+    }
+  }, "All Group Standings"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+      gap: 10
+    }
+  }, Object.keys(GROUPS).map(g => {
+    const groupTeams = standings[g] || [];
+    return /*#__PURE__*/React.createElement("div", {
+      key: g,
+      style: {
+        background: T.card,
+        border: `1px solid ${T.borderLight}`,
+        borderRadius: 4,
+        overflow: 'hidden'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '5px 8px',
+        background: T.accent,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        fontWeight: 800,
+        color: '#fff',
+        letterSpacing: '0.5px'
+      }
+    }, "GROUP ", g)), /*#__PURE__*/React.createElement("table", {
+      style: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: 10
+      }
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+      style: {
+        background: T.cardAlt
+      }
+    }, ['#', 'Team', 'MP', 'W', 'D', 'L', 'GD', 'Pts'].map(h => /*#__PURE__*/React.createElement("th", {
+      key: h,
+      style: {
+        padding: '3px 5px',
+        textAlign: h === 'Team' ? 'left' : 'center',
+        color: T.textFaint,
+        fontWeight: 700,
+        fontSize: 8,
+        textTransform: 'uppercase',
+        letterSpacing: '0.4px'
+      }
+    }, h)))), /*#__PURE__*/React.createElement("tbody", null, groupTeams.map((team, pos) => {
+      const s = stats[team];
+      const clinch = getClinch(team, stats, standings, groupEvents);
+      const clinchedAdv = clinch === 'FIRST' || clinch === 'SECOND' || clinch === 'WILDCARD';
+      const isElim = clinch === 'ELIMINATED';
+      const posColor = pos < 2 ? T.green : pos === 2 ? T.gold : T.textFaint;
+      return /*#__PURE__*/React.createElement("tr", {
+        key: team,
+        style: {
+          borderTop: `1px solid ${T.borderLight}`,
+          opacity: isElim ? 0.5 : 1
+        }
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          fontWeight: 800,
+          color: posColor,
+          fontSize: 10
+        }
+      }, pos + 1), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px'
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }
+      }, /*#__PURE__*/React.createElement(Flag, {
+        team: team,
+        size: 12
+      }), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontWeight: 600,
+          color: T.textPrimary,
+          whiteSpace: 'nowrap',
+          fontSize: 10
+        }
+      }, team), /*#__PURE__*/React.createElement(OwnerBadge, {
+        owner: PICKS[team]
+      }), clinchedAdv && /*#__PURE__*/React.createElement(ClinchedCheck, {
+        compact: true
+      }), isElim && /*#__PURE__*/React.createElement(EliminatedX, {
+        compact: true
+      }))), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          color: T.textSecondary
+        }
+      }, s.mp), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          color: T.green,
+          fontWeight: 700
+        }
+      }, s.w), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          color: T.gold
+        }
+      }, s.d), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          color: T.red
+        }
+      }, s.l), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          color: s.gf - s.ga >= 0 ? T.textSecondary : T.red
+        }
+      }, s.gf - s.ga > 0 ? '+' : '', s.gf - s.ga), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '4px 5px',
+          textAlign: 'center',
+          fontWeight: 700,
+          color: T.textPrimary
+        }
+      }, s.pts));
+    }))));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      fontSize: 9,
+      color: T.textFaint
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.green,
+      fontWeight: 700
+    }
+  }, "●"), " Top 2 advance automatically \xA0·\xA0 ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.gold,
+      fontWeight: 700
+    }
+  }, "●"), " 3rd place enters wildcard race \xA0·\xA0 ✓ Clinched \xA0·\xA0 ✕ Eliminated")) :
+  /*#__PURE__*/
+  /* Single group standings */
+  React.createElement("div", {
+    style: {
+      padding: '10px 12px',
+      borderBottom: `1px solid ${T.border}`,
+      background: T.cardAlt
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: T.textFaint,
+      textTransform: 'uppercase',
+      letterSpacing: '0.8px',
+      marginBottom: 7
+    }
+  }, "Group ", scheduleGroup, " Standings"), /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['#', 'Team', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts'].map(h => /*#__PURE__*/React.createElement("th", {
+    key: h,
+    style: {
+      padding: '2px 5px',
+      textAlign: h === 'Team' ? 'left' : 'center',
+      color: T.textFaint,
+      fontWeight: 700,
+      fontSize: 9,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      paddingBottom: 4
+    }
+  }, h)))), /*#__PURE__*/React.createElement("tbody", null, (standings[scheduleGroup] || []).map((team, pos) => {
+    const s = stats[team];
+    const clinch = getClinch(team, stats, standings, groupEvents);
+    const clinchedAdv = clinch === 'FIRST' || clinch === 'SECOND' || clinch === 'WILDCARD';
+    const isElim = clinch === 'ELIMINATED';
+    const posColor = pos < 2 ? T.green : pos === 2 ? T.gold : T.textFaint;
+    return /*#__PURE__*/React.createElement("tr", {
+      key: team,
+      style: {
+        borderTop: `1px solid ${T.borderLight}`,
+        opacity: isElim ? 0.5 : 1
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        fontWeight: 700,
+        color: posColor
+      }
+    }, pos + 1), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5
+      }
+    }, /*#__PURE__*/React.createElement(Flag, {
+      team: team,
+      size: 13
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: 600,
+        color: T.textPrimary,
+        whiteSpace: 'nowrap'
+      }
+    }, team), /*#__PURE__*/React.createElement(OwnerBadge, {
+      owner: PICKS[team]
+    }), clinchedAdv && /*#__PURE__*/React.createElement(ClinchedCheck, {
+      compact: true
+    }), isElim && /*#__PURE__*/React.createElement(EliminatedX, {
+      compact: true
+    }))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.textSecondary
+      }
+    }, s.mp), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.green,
+        fontWeight: 700
+      }
+    }, s.w), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.gold
+      }
+    }, s.d), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.red
+      }
+    }, s.l), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.textSecondary
+      }
+    }, s.gf), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: T.textSecondary
+      }
+    }, s.ga), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        color: s.gf - s.ga >= 0 ? T.textSecondary : T.red
+      }
+    }, s.gf - s.ga > 0 ? '+' : '', s.gf - s.ga), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '5px 5px',
+        textAlign: 'center',
+        fontWeight: 700,
+        color: T.textPrimary
+      }
+    }, s.pts));
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      fontSize: 9,
+      color: T.textFaint
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.green,
+      fontWeight: 700
+    }
+  }, "●"), " Top 2 advance \xA0·\xA0 ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.gold,
+      fontWeight: 700
+    }
+  }, "●"), " 3rd place enters wildcard race")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 10,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 5,
+      maxHeight: 460,
+      overflowY: 'auto'
+    }
+  }, sortedSchedule.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.textTertiary,
+      textAlign: 'center',
+      padding: 20
+    }
+  }, "No matches found. Try refreshing."), sortedSchedule.map(ev => /*#__PURE__*/React.createElement("div", {
+    key: ev.id,
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '18px 1fr auto 1fr auto',
+      alignItems: 'center',
+      gap: 6,
+      padding: '7px 10px',
+      background: T.cardAlt,
+      borderRadius: 4,
+      border: `1px solid ${T.borderLight}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: T.accent
+    }
+  }, "G", ev.group), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      justifyContent: 'flex-end',
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement(Flag, {
+    team: ev.t1,
+    size: 13
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textPrimary,
+      fontWeight: PICKS[ev.t1] ? 600 : 400,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, ev.t1), /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: PICKS[ev.t1]
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: ev.completed || ev.state === 'in' ? T.accent : T.textFaint,
+      textAlign: 'center',
+      minWidth: 38
+    }
+  }, ev.s1 !== null && ev.s2 !== null ? `${ev.s1}–${ev.s2}` : 'vs'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: PICKS[ev.t2]
+  }), /*#__PURE__*/React.createElement(Flag, {
+    team: ev.t2,
+    size: 13
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textPrimary,
+      fontWeight: PICKS[ev.t2] ? 600 : 400,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, ev.t2)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'right',
+      minWidth: 80
+    }
+  }, /*#__PURE__*/React.createElement(StatusBadge, {
+    ev: ev
+  })))))));
+}
+
+// ═══════════════════ CHARTS TAB ═══════════════════
+
+// Math-based advancement probability — used specifically for the performers chart
+// so the "actual" column reflects current on-field results, not the betting market
+// (which would give a trivial comparison when liveOdds === SEED_ODDS).
+const mathProb = (team, stats, standings, groupEvents) => {
+  if (hasClinchedAdvancement(team, stats, standings, groupEvents)) return 1.0;
+  if (isEliminated(team, stats, standings)) return 0.0;
+  const s = stats[team];
+  if (!s) return SEED_ODDS[team] ?? 0.5;
+  const st = standings[s.group];
+  if (!st) return SEED_ODDS[team] ?? 0.5;
+  const pos = st.indexOf(team);
+  const rem = 3 - s.mp;
+  if (rem === 0) return [1.0, 1.0, 0.55, 0.0][pos] ?? 0.0;
+  const base = [0.88, 0.68, 0.35, 0.10][pos] ?? 0.10;
+  return Math.min(0.97, Math.max(0.02, base + s.pts * 0.02));
+};
+function ChartsTab({
+  groupEvents,
+  stats,
+  standings,
+  liveOdds
+}) {
+  const playerTeams = PLAYERS.reduce((acc, p) => {
+    acc[p] = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    return acc;
+  }, {});
+
+  // ── Timeline: one snapshot per unique match date ──────────────────
+  const timeline = React.useMemo(() => {
+    const completed = groupEvents.filter(e => e.completed && e.s1 !== null && e.s2 !== null).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (!completed.length) return [];
+    const byDate = {};
+    completed.forEach(m => {
+      const d = (m.date || '').slice(0, 10);
+      if (!byDate[d]) byDate[d] = [];
+      byDate[d].push(m);
+    });
+    const dates = Object.keys(byDate).sort();
+    const fmtD = d => {
+      try {
+        return new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric'
+        });
+      } catch {
+        return d.slice(5);
+      }
+    };
+    let matchesSoFar = [];
+    let prevClinchMap = {};
+    const start = {
+      date: null,
+      label: 'Start',
+      pts: PLAYERS.reduce((a, p) => ({
+        ...a,
+        [p]: 0
+      }), {}),
+      clinched: PLAYERS.reduce((a, p) => ({
+        ...a,
+        [p]: 0
+      }), {}),
+      newClinches: {}
+    };
+    const points = [start];
+    dates.forEach(date => {
+      matchesSoFar = [...matchesSoFar, ...byDate[date]];
+
+      // Rebuild stats from scratch for this snapshot
+      const cStats = {};
+      ALL_TEAMS.forEach(t => {
+        const g = Object.entries(GROUPS).find(([, ts]) => ts.includes(t))[0];
+        cStats[t] = {
+          group: g,
+          mp: 0,
+          w: 0,
+          d: 0,
+          l: 0,
+          gf: 0,
+          ga: 0,
+          pts: 0
+        };
+      });
+      matchesSoFar.forEach(m => {
+        if (!cStats[m.t1] || !cStats[m.t2]) return;
+        cStats[m.t1].mp++;
+        cStats[m.t2].mp++;
+        cStats[m.t1].gf += m.s1;
+        cStats[m.t1].ga += m.s2;
+        cStats[m.t2].gf += m.s2;
+        cStats[m.t2].ga += m.s1;
+        if (m.s1 > m.s2) {
+          cStats[m.t1].w++;
+          cStats[m.t1].pts += 3;
+          cStats[m.t2].l++;
+        } else if (m.s2 > m.s1) {
+          cStats[m.t2].w++;
+          cStats[m.t2].pts += 3;
+          cStats[m.t1].l++;
+        } else {
+          cStats[m.t1].d++;
+          cStats[m.t1].pts++;
+          cStats[m.t2].d++;
+          cStats[m.t2].pts++;
+        }
+      });
+
+      // Simple sort (no h2h for historical snapshots — just pts then GD)
+      const cStandings = {};
+      Object.entries(GROUPS).forEach(([g, teams]) => {
+        cStandings[g] = [...teams].sort((a, b) => {
+          if (cStats[b].pts !== cStats[a].pts) return cStats[b].pts - cStats[a].pts;
+          return cStats[b].gf - cStats[b].ga - (cStats[a].gf - cStats[a].ga);
+        });
+      });
+      const clinchMap = {};
+      ALL_TEAMS.forEach(t => {
+        clinchMap[t] = getClinch(t, cStats, cStandings, matchesSoFar);
+      });
+      const newClinches = {};
+      ALL_TEAMS.forEach(t => {
+        const prev = prevClinchMap[t],
+          curr = clinchMap[t];
+        if ((curr === 'FIRST' || curr === 'SECOND' || curr === 'WILDCARD') && prev !== 'FIRST' && prev !== 'SECOND' && prev !== 'WILDCARD') {
+          const owner = PICKS[t];
+          if (!newClinches[owner]) newClinches[owner] = [];
+          newClinches[owner].push(t);
+        }
+      });
+      prevClinchMap = clinchMap;
+      points.push({
+        date,
+        label: fmtD(date),
+        pts: PLAYERS.reduce((a, p) => ({
+          ...a,
+          [p]: playerTeams[p].reduce((s, t) => s + (cStats[t]?.pts || 0), 0)
+        }), {}),
+        clinched: PLAYERS.reduce((a, p) => ({
+          ...a,
+          [p]: playerTeams[p].filter(t => clinchMap[t] === 'FIRST' || clinchMap[t] === 'SECOND' || clinchMap[t] === 'WILDCARD').length
+        }), {}),
+        newClinches
+      });
+    });
+    return points;
+  }, [groupEvents.filter(e => e.completed).length]);
+
+  // ── Performers data ───────────────────────────────────────────────
+  const performersData = PLAYERS.map(p => ({
+    player: p,
+    teams: playerTeams[p].map(team => ({
+      team,
+      projected: SEED_ODDS[team] ?? 0.5,
+      actual: mathProb(team, stats, standings, groupEvents)
+    })).sort((a, b) => b.actual - b.projected - (a.actual - a.projected))
+  }));
+
+  // ── Chart helpers ─────────────────────────────────────────────────
+  const W = 680,
+    H = 200,
+    M = {
+      t: 28,
+      r: 24,
+      b: 36,
+      l: 42
+    };
+  const IW = W - M.l - M.r,
+    IH = H - M.t - M.b;
+  const n = timeline.length;
+  const xOf = i => M.l + (n < 2 ? IW / 2 : i / (n - 1) * IW);
+  const yOf = (v, maxV) => M.t + IH - (maxV ? v / maxV * IH : 0);
+  const maxPts = Math.max(10, ...PLAYERS.map(p => Math.max(...timeline.map(t => t.pts[p] || 0))));
+  const ptsTop = Math.ceil(maxPts / 10) * 10;
+  const GridLines = ({
+    maxV,
+    ticks
+  }) => /*#__PURE__*/React.createElement(React.Fragment, null, Array.from({
+    length: ticks + 1
+  }, (_, i) => {
+    const v = maxV / ticks * i;
+    const y = yOf(v, maxV);
+    return /*#__PURE__*/React.createElement("g", {
+      key: i
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: M.l,
+      x2: M.l + IW,
+      y1: y,
+      y2: y,
+      stroke: T.borderLight,
+      strokeWidth: i === 0 ? 1.5 : 0.75
+    }), /*#__PURE__*/React.createElement("text", {
+      x: M.l - 5,
+      y: y + 4,
+      textAnchor: "end",
+      fontSize: 9,
+      fill: T.textFaint
+    }, Math.round(v)));
+  }));
+  const XLabels = ({
+    step
+  }) => /*#__PURE__*/React.createElement(React.Fragment, null, timeline.map((pt, i) => {
+    if (!pt.label || step > 1 && i % step !== 0 && i !== n - 1) return null;
+    return /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: xOf(i),
+      y: H - 6,
+      textAnchor: "middle",
+      fontSize: 8,
+      fill: T.textFaint
+    }, pt.label);
+  }));
+  const xStep = n > 14 ? 3 : n > 8 ? 2 : 1;
+  if (!timeline.length) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: 40,
+        textAlign: 'center',
+        color: T.textTertiary,
+        fontSize: 13
+      }
+    }, "Charts will appear once group stage matches have been completed. Try refreshing.");
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 14px',
+      borderBottom: `1px solid ${T.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13,
+      color: T.textPrimary
+    }
+  }, "Team Performance vs. Pre-Tournament Odds"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary,
+      marginTop: 3
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.green
+    }
+  }, "■"), " Overperforming \xA0", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.red
+    }
+  }, "■"), " Underperforming vs. pre-tournament sportsbook seed (Jun 23, 2026)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 12,
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gap: 10
+    }
+  }, performersData.map(({
+    player,
+    teams
+  }) => /*#__PURE__*/React.createElement("div", {
+    key: player,
+    style: {
+      background: T.cardAlt,
+      borderRadius: 4,
+      border: `1px solid ${T.border}`,
+      borderTop: `3px solid ${PC[player].hex}`,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '7px 10px',
+      borderBottom: `1px solid ${T.borderLight}`,
+      fontWeight: 700,
+      fontSize: 12,
+      color: PC[player].hex
+    }
+  }, player), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '4px 8px 8px'
+    }
+  }, teams.map(({
+    team,
+    projected,
+    actual
+  }) => {
+    const delta = actual - projected;
+    const barMax = 0.6;
+    const barW = Math.min(56, Math.abs(delta) / barMax * 56);
+    const isPos = delta >= 0;
+    const clinch = getClinch(team, stats, standings, groupEvents);
+    const isElim = clinch === 'ELIMINATED';
+    const clinchedAdv = clinch === 'FIRST' || clinch === 'SECOND' || clinch === 'WILDCARD';
+    return /*#__PURE__*/React.createElement("div", {
+      key: team,
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '14px minmax(0,1fr) 64px 38px',
+        alignItems: 'center',
+        gap: 4,
+        padding: '4px 0',
+        borderBottom: `1px solid ${T.borderLight}`,
+        opacity: isElim ? 0.5 : 1
+      }
+    }, /*#__PURE__*/React.createElement(Flag, {
+      team: team,
+      size: 13
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: T.textPrimary,
+        fontWeight: 500,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, team), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: 'relative',
+        height: 8,
+        display: 'flex',
+        alignItems: 'center'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: 'absolute',
+        left: '50%',
+        top: 0,
+        width: 1,
+        height: '100%',
+        background: T.border
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: 'absolute',
+        [isPos ? 'left' : 'right']: '50%',
+        width: barW,
+        height: 6,
+        borderRadius: 2,
+        background: isPos ? T.green : T.red
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 9,
+        color: isPos ? T.green : T.red,
+        fontWeight: 700,
+        textAlign: 'right',
+        whiteSpace: 'nowrap'
+      }
+    }, isPos ? '+' : '', Math.round(delta * 100), "%", clinchedAdv && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.green,
+        marginLeft: 2
+      }
+    }, "✓"), isElim && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.red,
+        marginLeft: 2
+      }
+    }, "✕")));
+  })))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 14px',
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13,
+      color: T.textPrimary
+    }
+  }, "Owner Points Over Time"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 12,
+      marginLeft: 'auto',
+      flexWrap: 'wrap'
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("span", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "18",
+    height: "4"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: "0",
+    y1: "2",
+    x2: "18",
+    y2: "2",
+    stroke: PC[p].hex,
+    strokeWidth: "2.5"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '4px 8px 0',
+      overflowX: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    viewBox: `0 0 ${W} ${H}`,
+    width: "100%",
+    style: {
+      display: 'block',
+      minWidth: 340
+    }
+  }, /*#__PURE__*/React.createElement(GridLines, {
+    maxV: ptsTop,
+    ticks: 5
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: M.l,
+    x2: M.l,
+    y1: M.t,
+    y2: M.t + IH,
+    stroke: T.border,
+    strokeWidth: 1
+  }), /*#__PURE__*/React.createElement(XLabels, {
+    step: xStep
+  }), PLAYERS.map(p => {
+    const pts = timeline.map((t, i) => [xOf(i), yOf(t.pts[p] || 0, ptsTop)]);
+    return /*#__PURE__*/React.createElement("g", {
+      key: p
+    }, /*#__PURE__*/React.createElement("polyline", {
+      points: pts.map(([x, y]) => `${x},${y}`).join(' '),
+      fill: "none",
+      stroke: PC[p].hex,
+      strokeWidth: 2.5,
+      strokeLinejoin: "round",
+      strokeLinecap: "round"
+    }), pts.map(([x, y], i) => /*#__PURE__*/React.createElement("circle", {
+      key: i,
+      cx: x,
+      cy: y,
+      r: 3,
+      fill: PC[p].hex
+    })), /*#__PURE__*/React.createElement("text", {
+      x: pts[pts.length - 1][0] + 4,
+      y: pts[pts.length - 1][1] + 4,
+      fontSize: 9,
+      fontWeight: "700",
+      fill: PC[p].hex
+    }, timeline[n - 1].pts[p]));
+  }), /*#__PURE__*/React.createElement("text", {
+    x: M.l - 30,
+    y: M.t - 10,
+    fontSize: 9,
+    fill: T.textFaint,
+    textAnchor: "start"
+  }, "Pts")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 14px',
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13,
+      color: T.textPrimary
+    }
+  }, "Clinched Teams Over Time"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, "flags in each owner's shaded lane mark clinch events; leader lines are neutral"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 12,
+      marginLeft: 'auto',
+      flexWrap: 'wrap'
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("span", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "18",
+    height: "4"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: "0",
+    y1: "2",
+    x2: "18",
+    y2: "2",
+    stroke: PC[p].hex,
+    strokeWidth: "2.5"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '4px 8px 0',
+      overflowX: 'auto'
+    }
+  }, (() => {
+    const FW = 18,
+      FH = 12,
+      LANE_H = 16,
+      GAP = 2;
+    const LANE_Y = PLAYERS.map((_, i) => GAP + i * LANE_H);
+    const FLAG_STRIP_H = PLAYERS.length * LANE_H + GAP;
+    const CW = W,
+      CM = {
+        t: FLAG_STRIP_H + 12,
+        r: 52,
+        b: 36,
+        l: 42
+      };
+    const CH = CM.t + 140 + CM.b;
+    const CIW = CW - CM.l - CM.r,
+      CIH = CH - CM.t - CM.b;
+    const cxOf = i => CM.l + (n < 2 ? CIW / 2 : i / (n - 1) * CIW);
+    const cyOf = v => CM.t + CIH - v / 12 * CIH;
+    return /*#__PURE__*/React.createElement("svg", {
+      viewBox: `0 0 ${CW} ${CH}`,
+      width: "100%",
+      style: {
+        display: 'block',
+        minWidth: 380
+      }
+    }, PLAYERS.map((p, pi) => {
+      const laneY = LANE_Y[pi];
+      return /*#__PURE__*/React.createElement("g", {
+        key: p
+      }, /*#__PURE__*/React.createElement("rect", {
+        x: CM.l,
+        y: laneY,
+        width: CIW,
+        height: LANE_H - 1,
+        fill: PC[p].hex,
+        opacity: 0.10,
+        rx: 1
+      }), /*#__PURE__*/React.createElement("text", {
+        x: CM.l - 5,
+        y: laneY + 9,
+        textAnchor: "end",
+        fontSize: 8,
+        fontWeight: "800",
+        fill: PC[p].hex
+      }, OWNER_INITIALS[p]), timeline.map((t, i) => {
+        const teams = t.newClinches[p] || [];
+        if (!teams.length) return null;
+        const cx = cxOf(i);
+        const cy = cyOf(t.clinched[p] || 0);
+        const totalFW = teams.length * FW + (teams.length - 1) * 2;
+        return /*#__PURE__*/React.createElement("g", {
+          key: i
+        }, /*#__PURE__*/React.createElement("line", {
+          x1: cx,
+          y1: laneY + FH + 1,
+          x2: cx,
+          y2: cy - 5,
+          stroke: T.textFaint,
+          strokeWidth: 1,
+          strokeDasharray: "2,2",
+          opacity: 0.45
+        }), teams.map((team, fi) => {
+          const fx = cx - totalFW / 2 + fi * (FW + 2);
+          return /*#__PURE__*/React.createElement("svg", {
+            key: team,
+            x: fx,
+            y: laneY + 1,
+            width: FW,
+            height: FH,
+            viewBox: "0 0 30 20",
+            overflow: "hidden"
+          }, /*#__PURE__*/React.createElement("rect", {
+            width: "30",
+            height: "20",
+            fill: "white"
+          }), FLAG_SVGS[team], /*#__PURE__*/React.createElement("rect", {
+            width: "30",
+            height: "20",
+            fill: "none",
+            stroke: T.border,
+            strokeWidth: "2"
+          }));
+        }));
+      }));
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: CM.l,
+      x2: CW - 4,
+      y1: CM.t - 6,
+      y2: CM.t - 6,
+      stroke: T.border,
+      strokeWidth: 1
+    }), Array.from({
+      length: 7
+    }, (_, i) => {
+      const v = i * 2,
+        y = cyOf(v);
+      return /*#__PURE__*/React.createElement("g", {
+        key: i
+      }, /*#__PURE__*/React.createElement("line", {
+        x1: CM.l,
+        x2: CM.l + CIW,
+        y1: y,
+        y2: y,
+        stroke: T.borderLight,
+        strokeWidth: i === 0 ? 1.5 : 0.75
+      }), /*#__PURE__*/React.createElement("text", {
+        x: CM.l - 5,
+        y: y + 4,
+        textAnchor: "end",
+        fontSize: 9,
+        fill: T.textFaint
+      }, v));
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: CM.l,
+      x2: CM.l,
+      y1: CM.t,
+      y2: CM.t + CIH,
+      stroke: T.border,
+      strokeWidth: 1
+    }), timeline.map((pt, i) => {
+      if (!pt.label || xStep > 1 && i % xStep !== 0 && i !== n - 1) return null;
+      return /*#__PURE__*/React.createElement("text", {
+        key: i,
+        x: cxOf(i),
+        y: CH - 8,
+        textAnchor: "middle",
+        fontSize: 8,
+        fill: T.textFaint
+      }, pt.label);
+    }), PLAYERS.map((p, pi) => {
+      const pts = timeline.map((t, i) => [cxOf(i), cyOf(t.clinched[p] || 0)]);
+      const lastVal = timeline[n - 1].clinched[p] || 0;
+      const allFinals = PLAYERS.map(pp => timeline[n - 1].clinched[pp] || 0);
+      const sameCount = allFinals.filter(v => v === lastVal).length;
+      const nudge = sameCount > 1 ? pi % 2 === 0 ? -7 : 7 : 0;
+      return /*#__PURE__*/React.createElement("g", {
+        key: p
+      }, /*#__PURE__*/React.createElement("polyline", {
+        points: pts.map(([x, y]) => `${x},${y}`).join(' '),
+        fill: "none",
+        stroke: PC[p].hex,
+        strokeWidth: 2.5,
+        strokeLinejoin: "round",
+        strokeLinecap: "round"
+      }), pts.map(([cx, cy], i) => {
+        const hasClinch = (timeline[i].newClinches[p] || []).length > 0;
+        return hasClinch ? /*#__PURE__*/React.createElement("circle", {
+          key: i,
+          cx: cx,
+          cy: cy,
+          r: 4.5,
+          fill: PC[p].hex,
+          stroke: "#fff",
+          strokeWidth: 1.5
+        }) : /*#__PURE__*/React.createElement("circle", {
+          key: i,
+          cx: cx,
+          cy: cy,
+          r: 2.5,
+          fill: PC[p].hex
+        });
+      }), /*#__PURE__*/React.createElement("text", {
+        x: pts[n - 1][0] + 5,
+        y: pts[n - 1][1] + nudge,
+        fontSize: 9,
+        fontWeight: "700",
+        fill: PC[p].hex,
+        dominantBaseline: "middle"
+      }, lastVal));
+    }), /*#__PURE__*/React.createElement("text", {
+      x: CM.l - 28,
+      y: CM.t - 8,
+      fontSize: 9,
+      fill: T.textFaint,
+      textAnchor: "start"
+    }, "Teams"));
+  })())));
+}
+
+// ═══════════════════ KNOCKOUT TAB ═══════════════════
+
+const MATCH_CARD_H = 54;
+const MATCH_UNIT = 68;
+const COL_W = 170;
+const bracketTop = (r, i) => (i + 0.5) * Math.pow(2, r) * MATCH_UNIT - MATCH_CARD_H / 2;
+const bracketLeft = r => r * COL_W;
+const BRACKET_H = 16 * MATCH_UNIT;
+const BRACKET_W = 5 * COL_W;
+
+// Pre-match win probability from SEED_ODDS, normalized so both teams sum to 100%.
+// Returns [p1pct, p2pct] or null if either team is TBD/unknown.
+function matchWinProb(t1, t2) {
+  const p1 = SEED_ODDS[t1],
+    p2 = SEED_ODDS[t2];
+  if (!p1 || !p2 || !t1 || !t2 || t1 === 'TBD' || t2 === 'TBD') return null;
+  const total = p1 + p2;
+  return [Math.round(p1 / total * 100), Math.round(p2 / total * 100)];
+}
+function BracketCard({
+  t1,
+  t2,
+  s1,
+  s2,
+  completed,
+  isLive
+}) {
+  const o1 = PICKS[t1],
+    o2 = PICKS[t2];
+  const winner = completed && s1 !== null && s2 !== null ? s1 > s2 ? t1 : s2 > s1 ? t2 : null : null;
+  const probs = matchWinProb(t1, t2);
+  const rows = [{
+    team: t1,
+    own: o1,
+    score: s1,
+    prob: probs ? probs[0] : null
+  }, {
+    team: t2,
+    own: o2,
+    score: s2,
+    prob: probs ? probs[1] : null
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 150,
+      border: isLive ? `1px solid ${T.red}` : `1px solid ${T.border}`,
+      borderRadius: 4,
+      background: T.card,
+      overflow: 'hidden',
+      fontSize: 11
+    }
+  }, rows.map(({
+    team,
+    own,
+    score,
+    prob
+  }, idx) => /*#__PURE__*/React.createElement("div", {
+    key: idx,
+    style: {
+      padding: '5px 7px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      borderTop: idx === 1 ? `1px solid ${T.borderLight}` : 'none',
+      background: winner === team ? own ? PC[own].subtle : T.accentSubtle : 'transparent'
+    }
+  }, team && team !== 'TBD' && /*#__PURE__*/React.createElement(Flag, {
+    team: team,
+    size: 13
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      color: winner === team ? T.textPrimary : own ? PC[own].hex : T.textSecondary,
+      fontWeight: winner === team ? 700 : own ? 600 : 400,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      fontSize: 10
+    }
+  }, team || 'TBD'), /*#__PURE__*/React.createElement(OwnerBadge, {
+    owner: own
+  }), prob !== null && score === null && !completed && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      fontVariantNumeric: 'tabular-nums',
+      flexShrink: 0
+    }
+  }, prob, "%"), prob !== null && completed && score === null && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      opacity: 0.4,
+      fontVariantNumeric: 'tabular-nums',
+      flexShrink: 0
+    }
+  }, prob, "%"), score !== null && score !== undefined && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: winner === team ? T.accent : T.textTertiary,
+      marginLeft: 2,
+      flexShrink: 0
+    }
+  }, score))));
+}
+function BracketLines() {
+  const lines = [];
+  KO_ROUNDS.slice(0, -1).forEach((round, r) => {
+    const count = KO_SIZES[round];
+    for (let i = 0; i < count; i += 2) {
+      const top1 = bracketTop(r, i) + MATCH_CARD_H / 2;
+      const top2 = bracketTop(r, i + 1) + MATCH_CARD_H / 2;
+      const x1 = bracketLeft(r) + 150;
+      const xMid = x1 + 10;
+      const x2 = bracketLeft(r + 1);
+      const topNext = bracketTop(r + 1, Math.floor(i / 2)) + MATCH_CARD_H / 2;
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i}`,
+        points: `${x1},${top1} ${xMid},${top1} ${xMid},${topNext} ${x2},${topNext}`,
+        fill: "none",
+        stroke: T.border,
+        strokeWidth: "1"
+      }));
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i + 1}`,
+        points: `${x1},${top2} ${xMid},${top2} ${xMid},${topNext} ${x2},${topNext}`,
+        fill: "none",
+        stroke: T.border,
+        strokeWidth: "1"
+      }));
+    }
+  });
+  return /*#__PURE__*/React.createElement("svg", {
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: BRACKET_W,
+      height: BRACKET_H,
+      pointerEvents: 'none'
+    }
+  }, lines);
+}
+function KnockoutTab({
+  knockoutEvents,
+  stats,
+  standings,
+  groupEvents
+}) {
+  const r32Real = knockoutEvents.filter(e => e.round === 'R32').sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const usingProjection = r32Real.length === 0;
+  const projectedR32 = (() => {
+    const slots = [];
+    for (let i = 0; i < 12; i++) {
+      const [s1, s2] = R32_SEEDS[i];
+      const g1 = s1[1],
+        g2 = s2[1];
+      slots.push({
+        t1: standings[g1] && standings[g1][0] || s1,
+        t2: standings[g2] && standings[g2][1] || s2,
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    const thirds = Object.entries(GROUPS).map(([g]) => {
+      const t = standings[g] && standings[g][2];
+      return t ? {
+        team: t,
+        ...stats[t]
+      } : null;
+    }).filter(Boolean).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      return b.gf - b.ga - (a.gf - a.ga);
+    });
+    for (let i = 0; i < 4; i++) {
+      slots.push({
+        t1: thirds[i * 2] ? thirds[i * 2].team : '3rd TBD',
+        t2: thirds[i * 2 + 1] ? thirds[i * 2 + 1].team : '3rd TBD',
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    return slots;
+  })();
+  const getRoundSlots = round => {
+    const real = knockoutEvents.filter(e => e.round === round).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (round === 'R32' && usingProjection) return projectedR32;
+    const size = KO_SIZES[round];
+    const slots = [];
+    for (let i = 0; i < size; i++) {
+      slots.push(real[i] || {
+        t1: 'TBD',
+        t2: 'TBD',
+        s1: null,
+        s2: null,
+        completed: false,
+        state: 'pre'
+      });
+    }
+    return slots;
+  };
+  const thirdPlaceMatch = knockoutEvents.find(e => e.round === 'Third');
+  const knockoutLosers = new Set();
+  knockoutEvents.forEach(e => {
+    if (e.completed && e.s1 !== null && e.s2 !== null) {
+      if (e.s1 > e.s2) knockoutLosers.add(e.t2);else if (e.s2 > e.s1) knockoutLosers.add(e.t1);
+    }
+  });
+  const remaining = PLAYERS.reduce((acc, p) => {
+    const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    acc[p] = myTeams.filter(t => getClinch(t, stats, standings, groupEvents) !== 'ELIMINATED' && !knockoutLosers.has(t)).length;
+    return acc;
+  }, {});
+
+  // WC win probability per owner — proportional to their remaining teams' pre-tournament odds,
+  // normalized so all four owners sum to exactly 100%.
+  const rawWin = PLAYERS.reduce((acc, p) => {
+    const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
+    acc[p] = myTeams.reduce((sum, t) => {
+      if (knockoutLosers.has(t)) return sum;
+      if (getClinch(t, stats, standings, groupEvents) === 'ELIMINATED') return sum;
+      return sum + (SEED_ODDS[t] ?? 0);
+    }, 0);
+    return acc;
+  }, {});
+  const totalRaw = Object.values(rawWin).reduce((a, b) => a + b, 0);
+  const wcProb = PLAYERS.reduce((acc, p) => {
+    acc[p] = totalRaw > 0 ? rawWin[p] / totalRaw : 0.25;
+    return acc;
+  }, {});
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: '12px 16px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: T.textFaint,
+      textTransform: 'uppercase',
+      letterSpacing: '0.8px',
+      marginBottom: 10
+    }
+  }, "Probability of having the World Cup winner"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 10
+    }
+  }, PLAYERS.map(p => {
+    const pct = Math.round(wcProb[p] * 100);
+    return /*#__PURE__*/React.createElement("div", {
+      key: p,
+      style: {
+        textAlign: 'center'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: PC[p].hex,
+        marginBottom: 4
+      }
+    }, p), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 22,
+        fontWeight: 800,
+        color: PC[p].hex,
+        lineHeight: 1
+      }
+    }, pct, "%"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 5,
+        background: T.borderLight,
+        borderRadius: 3,
+        marginTop: 6,
+        overflow: 'hidden'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: `${pct}%`,
+        height: '100%',
+        background: PC[p].hex,
+        borderRadius: 3
+      }
+    })));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: T.textFaint,
+      marginTop: 8
+    }
+  }, "Based on pre-tournament sportsbook odds for each owner's still-active teams, normalized to 100%.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 10
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderTop: `3px solid ${PC[p].hex}`,
+      borderRadius: 4,
+      padding: '12px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: T.textTertiary
+    }
+  }, "teams remaining")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 'auto',
+      fontSize: 24,
+      fontWeight: 800,
+      color: PC[p].hex,
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, remaining[p])))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 4,
+      padding: 16,
+      overflowX: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      width: BRACKET_W,
+      height: BRACKET_H + 40,
+      minWidth: BRACKET_W
+    }
+  }, KO_ROUNDS.map((round, r) => /*#__PURE__*/React.createElement("div", {
+    key: round,
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: bracketLeft(r),
+      width: 150,
+      textAlign: 'center',
+      fontSize: 9,
+      color: T.accent,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      padding: '3px 0',
+      borderBottom: `1px solid ${T.border}`
+    }
+  }, round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' : round === 'QF' ? 'Quarterfinals' : round === 'SF' ? 'Semifinals' : 'Final')), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 22,
+      left: 0,
+      width: BRACKET_W,
+      height: BRACKET_H
+    }
+  }, /*#__PURE__*/React.createElement(BracketLines, null), KO_ROUNDS.map((round, r) => {
+    const slots = getRoundSlots(round);
+    return slots.map((m, i) => /*#__PURE__*/React.createElement("div", {
+      key: `${round}-${i}`,
+      style: {
+        position: 'absolute',
+        top: bracketTop(r, i),
+        left: bracketLeft(r)
+      }
+    }, /*#__PURE__*/React.createElement(BracketCard, {
+      t1: m.t1,
+      t2: m.t2,
+      s1: m.s1,
+      s2: m.s2,
+      completed: m.completed,
+      isLive: m.state === 'in'
+    })));
+  })))), thirdPlaceMatch && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textTertiary
+    }
+  }, "3rd place match:"), /*#__PURE__*/React.createElement(BracketCard, {
+    t1: thirdPlaceMatch.t1,
+    t2: thirdPlaceMatch.t2,
+    s1: thirdPlaceMatch.s1,
+    s2: thirdPlaceMatch.s2,
+    completed: thirdPlaceMatch.completed,
+    isLive: thirdPlaceMatch.state === 'in'
+  })));
+}
+
+// ═══════════════════ MAIN APP ═══════════════════
+
+function App() {
+  const [activeTab, setActiveTab] = useState('groups');
+  const [standingsArr, setStandingsArr] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [liveOdds, setLiveOdds] = useState(null); // null = use SEED_ODDS fallback
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [dataSource, setDataSource] = useState(null); // 'espn' | 'ai-search' | null
+  const [tick, setTick] = useState(0);
+  const timeoutRef = useRef(null);
+  const matchesRef = useRef([]);
+  matchesRef.current = matches;
+  const standingsRef = useRef([]);
+  standingsRef.current = standingsArr;
+  const cooldownRef = useRef(0);
+  const backoffRef = useRef(60000); // starts at 1 min, doubles on repeated AI-search rate limits
+
+  // 1-second ticker purely so the cooldown countdown in the UI updates live
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const scheduleNext = useCallback(delayMs => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      refresh();
+    }, delayMs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const refresh = useCallback(async () => {
+    if (Date.now() < cooldownRef.current) {
+      scheduleNext(Math.max(5000, cooldownRef.current - Date.now()));
+      return;
+    }
+    setLoading(true);
+    try {
+      const {
+        standings,
+        matches: newMatches,
+        source,
+        liveOdds: freshOdds
+      } = await fetchLiveData();
+      const merged = newMatches && newMatches.length ? mergeMatches(matchesRef.current, newMatches) : matchesRef.current;
+      if (standings && standings.length) setStandingsArr(standings);
+      if (newMatches && newMatches.length) setMatches(merged);
+      if (freshOdds) setLiveOdds(freshOdds);
+      setError(null);
+      setDataSource(source);
+      backoffRef.current = 60000;
+      cooldownRef.current = 0;
+      setCooldownUntil(0);
+      const now = new Date();
+      setLastUpdated(now);
+      saveCache({
+        standings: standings && standings.length ? standings : standingsRef.current,
+        matches: merged,
+        liveOdds: freshOdds || liveOdds,
+        ts: now.getTime()
+      });
+      scheduleNext(source === 'espn' ? 60 * 1000 : 10 * 60 * 1000);
+    } catch (err) {
+      const msg = err && err.message || 'Could not reach live score data';
+      setError(msg);
+      if (/429/.test(msg)) {
+        const wait = backoffRef.current;
+        cooldownRef.current = Date.now() + wait;
+        setCooldownUntil(cooldownRef.current);
+        backoffRef.current = Math.min(wait * 2, 30 * 60 * 1000);
+        scheduleNext(wait);
+      } else {
+        scheduleNext(2 * 60 * 1000);
+      }
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleNext]);
+  useEffect(() => {
+    loadCache().then(c => {
+      if (c) {
+        if (c.standings) setStandingsArr(c.standings);
+        if (c.matches) setMatches(c.matches);
+        if (c.liveOdds) setLiveOdds(c.liveOdds);
+        if (c.ts) setLastUpdated(new Date(c.ts));
+      }
+      refresh();
+    });
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const stats = statsFromStandings(standingsArr);
+  const groupEvents = matches.filter(m => m.stage === 'group');
+  const knockoutEvents = matches.filter(m => m.stage === 'knockout');
+  const standings = getStandings(stats, groupEvents);
+  const inCooldown = Date.now() < cooldownUntil;
+  const cooldownSecs = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  const tabs = [{
+    id: 'draft',
+    label: 'Draft recap'
+  }, {
+    id: 'groups',
+    label: 'Group stage'
+  }, {
+    id: 'charts',
+    label: 'Charts & graphs'
+  }, {
+    id: 'knockout',
+    label: 'Knockout bracket'
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
+      background: T.page,
+      minHeight: '100vh',
+      color: T.textPrimary
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 4,
+      background: T.accent
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '12px 10px',
+      maxWidth: 1100,
+      margin: '0 auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: '1 1 160px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 20,
+      fontWeight: 800,
+      letterSpacing: -0.3,
+      color: T.textPrimary
+    }
+  }, "CHORB ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent
+    }
+  }, "FIFA 2026"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '6px 14px'
+    }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 8,
+      height: 8,
+      borderRadius: 2,
+      background: PC[p].hex
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PC[p].hex,
+      fontWeight: 700
+    }
+  }, p))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: refresh,
+    disabled: loading || inCooldown,
+    style: {
+      padding: '5px 12px',
+      borderRadius: 4,
+      border: `1px solid ${T.border}`,
+      background: loading || inCooldown ? T.cardAlt : T.card,
+      color: T.textSecondary,
+      fontSize: 11,
+      fontWeight: 600,
+      cursor: loading || inCooldown ? 'default' : 'pointer'
+    }
+  }, loading ? 'Searching for the latest scores…' : inCooldown ? `Rate limited — retrying in ${cooldownSecs}s` : '↻ Refresh now'), lastUpdated && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.textFaint
+    }
+  }, "Last updated ", lastUpdated.toLocaleTimeString(), dataSource === 'espn' && ' · live via ESPN · checks every 1 min', dataSource === 'ai-search' && ' · live via AI web search (artifact sandbox fallback) · checks every 10 min'), error && !inCooldown && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.red
+    }
+  }, "Live data failed (", error, ") — showing last cached results. Try Refresh now."), inCooldown && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: T.red
+    }
+  }, "Hit a rate limit on the last attempt — waiting before retrying automatically, to avoid making it worse.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4,
+      borderBottom: `2px solid ${T.border}`
+    }
+  }, tabs.map(tab => /*#__PURE__*/React.createElement("button", {
+    key: tab.id,
+    onClick: () => setActiveTab(tab.id),
+    style: {
+      padding: '8px 16px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer',
+      background: 'transparent',
+      color: activeTab === tab.id ? T.accent : T.textTertiary,
+      border: 'none',
+      borderBottom: activeTab === tab.id ? `2px solid ${T.accent}` : '2px solid transparent',
+      marginBottom: -2,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px'
+    }
+  }, tab.label)))), activeTab === 'draft' && /*#__PURE__*/React.createElement(DraftRecapTab, null), activeTab === 'groups' && /*#__PURE__*/React.createElement(GroupStageTab, {
+    groupEvents: groupEvents,
+    stats: stats,
+    standings: standings,
+    liveOdds: liveOdds
+  }), activeTab === 'charts' && /*#__PURE__*/React.createElement(ChartsTab, {
+    groupEvents: groupEvents,
+    stats: stats,
+    standings: standings,
+    liveOdds: liveOdds
+  }), activeTab === 'knockout' && /*#__PURE__*/React.createElement(KnockoutTab, {
+    knockoutEvents: knockoutEvents,
+    stats: stats,
+    standings: standings,
+    groupEvents: groupEvents
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 24,
+      paddingTop: 12,
+      borderTop: `1px solid ${T.border}`,
+      fontSize: 10,
+      color: T.textFaint,
+      textAlign: 'center'
+    }
+  }, "Live scores via ESPN where reachable, with an AI web-search fallback inside the Claude.ai artifact sandbox — may lag actual play by a minute or two · 2026 FIFA World Cup · USA, Canada & Mexico")));
+}
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
