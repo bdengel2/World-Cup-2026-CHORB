@@ -3746,7 +3746,8 @@ function KnockoutTab({
   knockoutEvents,
   stats,
   standings,
-  groupEvents
+  groupEvents,
+  liveOdds
 }) {
   const r32Real = knockoutEvents.filter(e => e.round === 'R32').sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   const usingProjection = r32Real.length === 0;
@@ -3817,14 +3818,17 @@ function KnockoutTab({
     return acc;
   }, {});
 
-  // WC win probability per owner — proportional to their remaining teams' pre-tournament odds,
+  // WC win probability per owner — proportional to their remaining teams' current odds,
   // normalized so all four owners sum to exactly 100%.
+  // Uses live sportsbook odds (fetched each refresh) when available; falls back to
+  // pre-tournament seed odds when the live odds haven't loaded yet (e.g. ESPN path).
   const rawWin = PLAYERS.reduce((acc, p) => {
     const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
     acc[p] = myTeams.reduce((sum, t) => {
       if (knockoutLosers.has(t)) return sum;
       if (getClinch(t, stats, standings, groupEvents) === 'ELIMINATED') return sum;
-      return sum + (SEED_ODDS[t] ?? 0);
+      const odds = liveOdds && liveOdds[t] != null ? liveOdds[t] : SEED_ODDS[t] ?? 0;
+      return sum + odds;
     }, 0);
     return acc;
   }, {});
@@ -3904,7 +3908,7 @@ function KnockoutTab({
       color: T.textFaint,
       marginTop: 8
     }
-  }, "Based on pre-tournament sportsbook odds for each owner's still-active teams, normalized to 100%.")), /*#__PURE__*/React.createElement("div", {
+  }, "Based on current sportsbook odds for each owner's still-active teams (live odds when available, pre-tournament seed as fallback), normalized to 100%.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(4,1fr)',
@@ -4276,7 +4280,8 @@ function App() {
     knockoutEvents: knockoutEvents,
     stats: stats,
     standings: standings,
-    groupEvents: groupEvents
+    groupEvents: groupEvents,
+    liveOdds: liveOdds
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 24,
