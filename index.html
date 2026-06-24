@@ -1,17 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CHORB FIFA 2026</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<style>html,body{margin:0;padding:0}*{box-sizing:border-box}</style>
+<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<style>
+html, body { margin: 0; padding: 0; }
+* { box-sizing: border-box; }
+#pre-react {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  background: #F2F1EA; min-height: 100vh; display: flex; align-items: center;
+  justify-content: center; color: #8a8a80; font-size: 13px;
+}
+</style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <div id="pre-react">Loading CHORB FIFA 2026…</div>
+</div>
 <script>
-if(!window.storage){const mem={};window.storage={get:async k=>(k in mem?{key:k,value:mem[k]}:(()=>{throw new Error("not found")})()),set:async(k,v)=>{mem[k]=v;return{key:k,value:v};},delete:async k=>{delete mem[k];return{key:k,deleted:true};},list:async()=>({keys:Object.keys(mem)})}}
+window.onerror = function(msg, src, line, col, err) {
+  document.getElementById('root').innerHTML =
+    '<div style="font-family:monospace;padding:20px;color:#B23A2E;background:#F2F1EA;min-height:100vh">' +
+    '<b>CHORB FIFA 2026 — startup error</b><br><br>' + (msg || err) +
+    '<br><small>at ' + src + ':' + line + ':' + col + '</small>' +
+    '<br><br><small>Open browser console (F12) for full stack trace.</small></div>';
+  return false;
+};
+</script>
+<script>
+if (!window.storage) {
+  var _mem = {};
+  window.storage = {
+    get: function(k) {
+      return new Promise(function(resolve, reject) {
+        if (k in _mem) resolve({ key: k, value: _mem[k] });
+        else reject(new Error('not found'));
+      });
+    },
+    set: function(k, v) { _mem[k] = v; return Promise.resolve({ key: k, value: v }); },
+    delete: function(k) { delete _mem[k]; return Promise.resolve({ key: k, deleted: true }); },
+    list: function() { return Promise.resolve({ keys: Object.keys(_mem) }); }
+  };
+}
 </script>
 <script>
 const {
@@ -183,10 +216,13 @@ const normalizeOddsDict = rawDict => {
     const known = teams.filter(t => rawDict[t] !== undefined);
     if (known.length < 2) return; // not enough data for this group
     coveredGroups++;
-    const raws = teams.map(t => ({
-      t,
-      p: americanToImplied(rawDict[t] ?? (t in rawDict ? rawDict[t] : 0))
-    }));
+    const raws = teams.map(t => {
+      var _rawDict$t;
+      return {
+        t,
+        p: americanToImplied((_rawDict$t = rawDict[t]) !== null && _rawDict$t !== void 0 ? _rawDict$t : t in rawDict ? rawDict[t] : 0)
+      };
+    });
     const total = raws.reduce((s, r) => s + r.p, 0);
     if (total === 0) return;
     raws.forEach(({
@@ -1268,7 +1304,8 @@ async function fetchFromAISearch() {
 // why it's tried first below, with the AI-search method as an automatic
 // fallback for the in-artifact context where this direct call can't reach out.
 
-const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=300';
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=300';
+const ESPN_STANDINGS_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings';
 const KO_DATE_RANGES = {
   R32: ['2026-06-28', '2026-07-03'],
   R16: ['2026-07-04', '2026-07-07'],
@@ -1276,6 +1313,22 @@ const KO_DATE_RANGES = {
   SF: ['2026-07-14', '2026-07-15'],
   Third: ['2026-07-18', '2026-07-18'],
   Final: ['2026-07-19', '2026-07-19']
+};
+
+// Group number (1-12) → letter (A-L) for ESPN APIs that use numeric group identifiers
+const GROUP_NUM_TO_LETTER = {
+  1: 'A',
+  2: 'B',
+  3: 'C',
+  4: 'D',
+  5: 'E',
+  6: 'F',
+  7: 'G',
+  8: 'H',
+  9: 'I',
+  10: 'J',
+  11: 'K',
+  12: 'L'
 };
 function getRoundForDate(isoDate) {
   const d = (isoDate || '').slice(0, 10);
@@ -1287,15 +1340,24 @@ function getRoundForDate(isoDate) {
 function parseESPNEvents(json) {
   const events = json && json.events || [];
   return events.map(ev => {
+    var _comp$notes;
     const comp = ev.competitions && ev.competitions[0] || {};
     const statusType = comp.status && comp.status.type || {};
     const competitors = comp.competitors || [];
     const home = competitors.find(c => c.homeAway === 'home') || {};
     const away = competitors.find(c => c.homeAway === 'away') || {};
-    const note = comp.altGameNote || '';
-    const groupMatch = /Group\s+([A-L])/i.exec(note);
-    const group = groupMatch ? groupMatch[1] : null;
-    const stage = group ? 'group' : 'knockout';
+
+    // Try multiple formats ESPN uses for group identification:
+    // "Group A" (letter), "Group 1"–"Group 12" (number), "Group Stage - Group A", etc.
+    const note = comp.altGameNote || ((_comp$notes = comp.notes) === null || _comp$notes === void 0 || (_comp$notes = _comp$notes[0]) === null || _comp$notes === void 0 ? void 0 : _comp$notes.text) || ev.name || '';
+    const letterMatch = /Group\s+([A-L])\b/i.exec(note);
+    const numberMatch = /Group\s+(\d{1,2})\b/i.exec(note);
+    const group = letterMatch ? letterMatch[1].toUpperCase() : numberMatch ? GROUP_NUM_TO_LETTER[parseInt(numberMatch[1])] || null : null;
+
+    // Also detect via date range if the note doesn't specify — group stage is Jun 11-27
+    const matchDate = (ev.date || '').slice(0, 10);
+    const isGroupDate = matchDate >= '2026-06-11' && matchDate <= '2026-06-27';
+    const stage = group ? 'group' : isGroupDate && !getRoundForDate(matchDate) ? 'group' : 'knockout';
     const round = stage === 'knockout' ? getRoundForDate(ev.date || '') : null;
     const t1 = normalizeTeam(home.team && home.team.displayName);
     const t2 = normalizeTeam(away.team && away.team.displayName);
@@ -1314,6 +1376,44 @@ function parseESPNEvents(json) {
       statusDetail: statusType.shortDetail || statusType.detail || ''
     };
   }).filter(m => m.t1 && m.t2);
+}
+
+// Parse ESPN's dedicated standings endpoint — this always has current W/D/L/GD/Pts
+// even for groups that finished weeks ago, unlike the scoreboard which drops old matches.
+function parseESPNStandings(json) {
+  const results = [];
+  const children = json && json.children || (json && json.standings && json.standings.entries ? [json] : []);
+  // ESPN standings nests by group: { children: [{ name: "Group A", standings: { entries: [...] } }] }
+  (children.length ? children : [json]).forEach(groupNode => {
+    const groupName = groupNode.name || groupNode.abbreviation || '';
+    // Extract group letter from name like "Group A", "Group 1", etc.
+    const lm = /Group\s+([A-L])\b/i.exec(groupName);
+    const nm = /Group\s+(\d{1,2})\b/i.exec(groupName);
+    const grpLetter = lm ? lm[1].toUpperCase() : nm ? GROUP_NUM_TO_LETTER[parseInt(nm[1])] || null : null;
+    const entries = groupNode.standings && groupNode.standings.entries || groupNode.entries || [];
+    entries.forEach(entry => {
+      var _Object$entries$find;
+      const teamName = normalizeTeam(entry.team && (entry.team.displayName || entry.team.shortDisplayName));
+      if (!teamName) return;
+      const stats = {};
+      (entry.stats || []).forEach(s => {
+        stats[s.name] = s.value;
+      });
+      // ESPN stat names vary: gamesPlayed/matchesPlayed, wins, ties/draws/draws, losses, pointsFor/goalsFor, etc.
+      results.push({
+        team: teamName,
+        group: grpLetter || ((_Object$entries$find = Object.entries(GROUPS).find(([, ts]) => ts.includes(teamName))) === null || _Object$entries$find === void 0 ? void 0 : _Object$entries$find[0]) || null,
+        mp: stats.gamesPlayed || stats.matchesPlayed || stats.played || 0,
+        w: stats.wins || stats.w || 0,
+        d: stats.ties || stats.draws || stats.d || 0,
+        l: stats.losses || stats.l || 0,
+        gf: stats.pointsFor || stats.goalsFor || stats.gf || 0,
+        ga: stats.pointsAgainst || stats.goalsAgainst || stats.ga || 0,
+        pts: stats.points || stats.pts || 0
+      });
+    });
+  });
+  return results;
 }
 function computeStandingsFromMatches(groupMatches) {
   const acc = {};
@@ -1358,17 +1458,36 @@ function computeStandingsFromMatches(groupMatches) {
   return Object.values(acc);
 }
 async function fetchFromESPN() {
-  const res = await fetch(ESPN_URL);
-  if (!res.ok) throw new Error('ESPN request failed (' + res.status + ')');
-  const json = await res.json();
-  const matches = parseESPNEvents(json);
+  // Fetch scoreboard and standings in parallel — the standings endpoint is the
+  // authoritative source for W/D/L/GD/Pts even for groups that finished weeks ago,
+  // while the scoreboard provides the live match schedule and upcoming fixtures.
+  const [scoreboardRes, standingsRes] = await Promise.allSettled([fetch(ESPN_URL), fetch(ESPN_STANDINGS_URL)]);
+  if (scoreboardRes.status === 'rejected' || !scoreboardRes.value.ok) {
+    throw new Error('ESPN scoreboard failed');
+  }
+  const scoreboardJson = await scoreboardRes.value.json();
+  const matches = parseESPNEvents(scoreboardJson);
   if (!matches.length) throw new Error('ESPN response had no events');
-  const standings = computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+
+  // Use the standings API if it succeeded; otherwise fall back to computing from matches.
+  // The standings API always has correct pts/GD even for long-completed groups.
+  let standings;
+  if (standingsRes.status === 'fulfilled' && standingsRes.value.ok) {
+    try {
+      const standingsJson = await standingsRes.value.json();
+      const parsed = parseESPNStandings(standingsJson);
+      standings = parsed.length >= 12 ? parsed : computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+    } catch (e) {
+      standings = computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+    }
+  } else {
+    standings = computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+  }
   return {
     standings,
     matches,
     liveOdds: null
-  }; // ESPN has no odds endpoint; liveOdds come from AI-search
+  };
 }
 
 // Tries the direct, fast, free ESPN feed first (works when this page is hosted
@@ -1612,10 +1731,11 @@ const isEliminated = (team, stats, standings) => {
 //   4. SEED_ODDS (pre-tournament odds normalized per group, updated June 23 2026) → fallback
 // The returned value is always a clean 0–1 implied probability.
 const getAdvProb = (team, stats, standings, groupMatches, liveOdds) => {
+  var _SEED_ODDS$team;
   if (hasClinchedAdvancement(team, stats, standings, groupMatches)) return 1.0;
   if (isEliminated(team, stats, standings)) return 0.0;
   if (liveOdds && liveOdds[team] !== undefined) return liveOdds[team];
-  return SEED_ODDS[team] ?? 0.5;
+  return (_SEED_ODDS$team = SEED_ODDS[team]) !== null && _SEED_ODDS$team !== void 0 ? _SEED_ODDS$team : 0.5;
 };
 const getClinch = (team, stats, standings, groupMatches) => {
   const s = stats[team];
@@ -1845,27 +1965,30 @@ function DraftRecapTab() {
       flexDirection: 'column',
       gap: 3
     }
-  }, playerPicks[p].map(team => /*#__PURE__*/React.createElement("div", {
-    key: team,
-    style: {
-      fontSize: 11,
-      color: T.textPrimary,
-      padding: '3px 0',
-      borderBottom: `1px solid ${T.borderLight}`,
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6
-    }
-  }, /*#__PURE__*/React.createElement(Flag, {
-    team: team,
-    size: 14
-  }), /*#__PURE__*/React.createElement("span", null, team), /*#__PURE__*/React.createElement("span", {
-    style: {
-      marginLeft: 'auto',
-      fontSize: 9,
-      color: T.textFaint
-    }
-  }, "G", Object.entries(GROUPS).find(([, ts]) => ts.includes(team))?.[0]))))))));
+  }, playerPicks[p].map(team => {
+    var _Object$entries$find2;
+    return /*#__PURE__*/React.createElement("div", {
+      key: team,
+      style: {
+        fontSize: 11,
+        color: T.textPrimary,
+        padding: '3px 0',
+        borderBottom: `1px solid ${T.borderLight}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement(Flag, {
+      team: team,
+      size: 14
+    }), /*#__PURE__*/React.createElement("span", null, team), /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: 'auto',
+        fontSize: 9,
+        color: T.textFaint
+      }
+    }, "G", (_Object$entries$find2 = Object.entries(GROUPS).find(([, ts]) => ts.includes(team))) === null || _Object$entries$find2 === void 0 ? void 0 : _Object$entries$find2[0]));
+  }))))));
 }
 
 // ═══════════════════ GROUP STAGE TAB ═══════════════════
@@ -2014,7 +2137,10 @@ function GroupStageTab({
     const pd = playerData.find(x => x.p === b).clinched - playerData.find(x => x.p === a).clinched;
     return pd !== 0 ? pd : totals(b).pts - totals(a).pts;
   });
-  const getRankLabel = rank => ['🥇', '🥈', '🥉', '4'][rank] ?? `${rank + 1}`;
+  const getRankLabel = rank => {
+    var _rank;
+    return (_rank = ['🥇', '🥈', '🥉', '4'][rank]) !== null && _rank !== void 0 ? _rank : `${rank + 1}`;
+  };
   const activeTeams = activePlayer === 'ALL' ? ALL_TEAMS : playerTeams[activePlayer];
   const liveNow = groupEvents.filter(e => e.state === 'in');
   const totalAlive = ALL_TEAMS.filter(t => getClinch(t, stats, standings, groupEvents) !== 'ELIMINATED').length;
@@ -2907,16 +3033,17 @@ function GroupStageTab({
 // so the "actual" column reflects current on-field results, not the betting market
 // (which would give a trivial comparison when liveOdds === SEED_ODDS).
 const mathProb = (team, stats, standings, groupEvents) => {
+  var _SEED_ODDS$team2, _SEED_ODDS$team3, _pos, _pos2;
   if (hasClinchedAdvancement(team, stats, standings, groupEvents)) return 1.0;
   if (isEliminated(team, stats, standings)) return 0.0;
   const s = stats[team];
-  if (!s) return SEED_ODDS[team] ?? 0.5;
+  if (!s) return (_SEED_ODDS$team2 = SEED_ODDS[team]) !== null && _SEED_ODDS$team2 !== void 0 ? _SEED_ODDS$team2 : 0.5;
   const st = standings[s.group];
-  if (!st) return SEED_ODDS[team] ?? 0.5;
+  if (!st) return (_SEED_ODDS$team3 = SEED_ODDS[team]) !== null && _SEED_ODDS$team3 !== void 0 ? _SEED_ODDS$team3 : 0.5;
   const pos = st.indexOf(team);
   const rem = 3 - s.mp;
-  if (rem === 0) return [1.0, 1.0, 0.55, 0.0][pos] ?? 0.0;
-  const base = [0.88, 0.68, 0.35, 0.10][pos] ?? 0.10;
+  if (rem === 0) return (_pos = [1.0, 1.0, 0.55, 0.0][pos]) !== null && _pos !== void 0 ? _pos : 0.0;
+  const base = (_pos2 = [0.88, 0.68, 0.35, 0.10][pos]) !== null && _pos2 !== void 0 ? _pos2 : 0.10;
   return Math.min(0.97, Math.max(0.02, base + s.pts * 0.02));
 };
 function ChartsTab({
@@ -3037,7 +3164,10 @@ function ChartsTab({
         label: fmtD(date),
         pts: PLAYERS.reduce((a, p) => ({
           ...a,
-          [p]: playerTeams[p].reduce((s, t) => s + (cStats[t]?.pts || 0), 0)
+          [p]: playerTeams[p].reduce((s, t) => {
+            var _cStats$t;
+            return s + (((_cStats$t = cStats[t]) === null || _cStats$t === void 0 ? void 0 : _cStats$t.pts) || 0);
+          }, 0)
         }), {}),
         clinched: PLAYERS.reduce((a, p) => ({
           ...a,
@@ -3052,11 +3182,14 @@ function ChartsTab({
   // ── Performers data ───────────────────────────────────────────────
   const performersData = PLAYERS.map(p => ({
     player: p,
-    teams: playerTeams[p].map(team => ({
-      team,
-      projected: SEED_ODDS[team] ?? 0.5,
-      actual: mathProb(team, stats, standings, groupEvents)
-    })).sort((a, b) => b.actual - b.projected - (a.actual - a.projected))
+    teams: playerTeams[p].map(team => {
+      var _SEED_ODDS$team4;
+      return {
+        team,
+        projected: (_SEED_ODDS$team4 = SEED_ODDS[team]) !== null && _SEED_ODDS$team4 !== void 0 ? _SEED_ODDS$team4 : 0.5,
+        actual: mathProb(team, stats, standings, groupEvents)
+      };
+    }).sort((a, b) => b.actual - b.projected - (a.actual - a.projected))
   }));
 
   // ── Chart helpers ─────────────────────────────────────────────────
@@ -3847,9 +3980,10 @@ function KnockoutTab({
   const rawWin = PLAYERS.reduce((acc, p) => {
     const myTeams = Object.entries(PICKS).filter(([, o]) => o === p).map(([t]) => t);
     acc[p] = myTeams.reduce((sum, t) => {
+      var _SEED_ODDS$t;
       if (knockoutLosers.has(t)) return sum;
       if (getClinch(t, stats, standings, groupEvents) === 'ELIMINATED') return sum;
-      const odds = liveOdds && liveOdds[t] != null ? liveOdds[t] : SEED_ODDS[t] ?? 0;
+      const odds = liveOdds && liveOdds[t] != null ? liveOdds[t] : (_SEED_ODDS$t = SEED_ODDS[t]) !== null && _SEED_ODDS$t !== void 0 ? _SEED_ODDS$t : 0;
       return sum + odds;
     }, 0);
     return acc;
@@ -4315,8 +4449,15 @@ function App() {
     }
   }, "Live scores via ESPN where reachable, with an AI web-search fallback inside the Claude.ai artifact sandbox — may lag actual play by a minute or two · 2026 FIFA World Cup · USA, Canada & Mexico")));
 }
-const root=ReactDOM.createRoot(document.getElementById("root"));
-root.render(React.createElement(App));
+try {
+  var _root = ReactDOM.createRoot(document.getElementById('root'));
+  _root.render(React.createElement(App));
+} catch(e) {
+  document.getElementById('root').innerHTML =
+    '<div style="font-family:monospace;padding:20px;color:#B23A2E;background:#F2F1EA;min-height:100vh">' +
+    '<b>CHORB FIFA 2026 — render error</b><br><br>' + e.message +
+    '<br><pre style="font-size:11px">' + (e.stack||'') + '</pre></div>';
+}
 </script>
 </body>
 </html>
