@@ -4,124 +4,25 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CHORB FIFA 2026</title>
-
-<!-- React 18.2.0 — primary CDN (jsDelivr) -->
-<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-
-<!-- Fallback: if jsDelivr failed, load from unpkg -->
-<script>
-if (typeof React === 'undefined') {
-  document.write('<scr'+'ipt src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"><\/scr'+'ipt>');
-  document.write('<scr'+'ipt src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"><\/scr'+'ipt>');
-}
-</script>
-
-<style>
-html,body{margin:0;padding:0}*{box-sizing:border-box}
-</style>
+<link rel="icon" type="image/png" href="./favicon.png">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<style>html,body{margin:0;padding:0}*{box-sizing:border-box}</style>
 </head>
 <body>
-
-<!-- Pre-React shell — visible until React mounts and replaces #root content -->
-<div id="root" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F2F1EA;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;color:#8a8a80;font-size:14px;flex-direction:column;gap:10px">
-  <div>Loading CHORB FIFA 2026…</div>
-  <div id="load-status" style="font-size:11px;color:#a3a399">Initializing…</div>
-</div>
-
+<div id="root"></div>
 <script>
-// ── Diagnostics ──────────────────────────────────────────────────────────────
-function setStatus(msg) {
-  var el = document.getElementById('load-status');
-  if (el) el.textContent = msg;
-}
-function showFatalError(title, detail) {
-  var root = document.getElementById('root');
-  if (!root) return;
-  root.style.cssText = '';
-  root.innerHTML =
-    '<div style="font-family:monospace;padding:24px;color:#B23A2E;background:#F2F1EA;min-height:100vh">' +
-    '<div style="font-size:16px;font-weight:bold;margin-bottom:12px">CHORB FIFA 2026 — ' + title + '</div>' +
-    '<div style="margin-bottom:16px">' + detail + '</div>' +
-    '<div style="font-size:11px;color:#666">Open browser DevTools (F12 → Console) for the full stack trace.</div>' +
-    '</div>';
-}
-
-// Catch ALL uncaught synchronous errors
-window.onerror = function(msg, src, line, col, err) {
-  showFatalError('startup error', (msg || String(err)) + '<br><small style="color:#888">at ' + (src||'?') + ':' + (line||'?') + '</small>');
-  return true;
-};
-// Catch unhandled Promise rejections
-window.addEventListener('unhandledrejection', function(e) {
-  var msg = e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled promise rejection';
-  showFatalError('async error', msg);
-});
-
-// Safety net: if React hasn't mounted after 15 seconds, show diagnostic
-setTimeout(function() {
-  var root = document.getElementById('root');
-  var status = document.getElementById('load-status');
-  // If load-status element still exists, React hasn't replaced #root yet
-  if (status && root && root.contains(status)) {
-    showFatalError('mount timeout',
-      'React did not mount within 15 seconds.<br><br>' +
-      'React available: <b>' + (typeof React !== 'undefined') + '</b><br>' +
-      'ReactDOM available: <b>' + (typeof ReactDOM !== 'undefined') + '</b><br>' +
-      'Try hard-refreshing the page (Ctrl+Shift+R / Cmd+Shift+R).');
-  }
-}, 15000);
-</script>
-
-<script>
-// ── Storage shim (not available outside Claude.ai artifact sandbox) ──────────
 if (!window.storage) {
-  var _m = {};
+  const mem = {};
   window.storage = {
-    get: function(k) {
-      return new Promise(function(ok, fail) {
-        _m.hasOwnProperty(k) ? ok({key:k, value:_m[k]}) : fail(new Error('not found'));
-      });
-    },
-    set: function(k,v) { _m[k]=String(v); return Promise.resolve({key:k,value:_m[k]}); },
-    delete: function(k) { delete _m[k]; return Promise.resolve({key:k,deleted:true}); },
-    list: function() { return Promise.resolve({keys:Object.keys(_m)}); }
+    get: async (k) => (k in mem ? { key: k, value: mem[k] } : (() => { throw new Error('not found'); })()),
+    set: async (k, v) => { mem[k] = v; return { key: k, value: v }; },
+    delete: async (k) => { delete mem[k]; return { key: k, deleted: true }; },
+    list: async () => ({ keys: Object.keys(mem) }),
   };
 }
-setStatus('Storage ready…');
 </script>
-
 <script>
-// ── Error boundary (catches React render errors instead of blank screen) ──────
-// Must be defined before App so it can wrap it at mount time.
-var ErrorBoundary = /** @class */ (function(_super) {
-  function ErrorBoundary(props) {
-    var _this = _super.call(this, props) || this;
-    _this.state = { error: null };
-    return _this;
-  }
-  ErrorBoundary.getDerivedStateFromError = function(err) { return { error: err }; };
-  ErrorBoundary.prototype.render = function() {
-    if (this.state.error) {
-      return React.createElement('div', {
-        style: {fontFamily:'monospace',padding:'24px',color:'#B23A2E',background:'#F2F1EA',minHeight:'100vh'}
-      },
-        React.createElement('div', {style:{fontSize:'16px',fontWeight:'bold',marginBottom:'12px'}}, 'CHORB FIFA 2026 — render error'),
-        React.createElement('div', {style:{marginBottom:'8px'}}, this.state.error.message),
-        React.createElement('pre', {style:{fontSize:'11px',overflowX:'auto',whiteSpace:'pre-wrap'}}, this.state.error.stack || ''),
-        React.createElement('div', {style:{fontSize:'11px',color:'#888',marginTop:'12px'}}, 'Open DevTools (F12) for full details.')
-      );
-    }
-    return this.props.children;
-  };
-  return ErrorBoundary;
-}(React.Component));
-
-setStatus('Error boundary ready…');
-</script>
-
-<script>
-// ── App (compiled from chorb-fifa-2026.jsx) ───────────────────────────────────
 const {
   useState,
   useEffect,
@@ -1223,6 +1124,7 @@ Find:
 2. ALL 72 group-stage matches — completed, in progress, AND not yet played. Include official date AND kickoff time in UTC ISO 8601 (e.g. "2026-06-19T19:00:00Z"), group letter, both team names, both scores, and status. Unplayed matches: score1/score2 null, status "SCHEDULED". Include all 72.
 3. Any knockout-stage match (R32/R16/QF/SF/Final) that's completed, in progress, or has confirmed teams and a date.
 4. Current sportsbook American moneyline odds for each of the 48 teams to advance past the group stage (qualify for the Round of 32). Use DraftKings, FanDuel, BetMGM, or any major sportsbook. For already-eliminated teams use +100000; for already-clinched teams use -100000. Provide as a compact object with team names as keys and integer moneyline odds as values.
+5. Official advancement status for every team whose group-stage fate is confirmed: which teams have officially qualified for the Round of 32 (as group winner, runner-up, or wildcard 3rd place) and which have been officially eliminated. Source from FIFA.com, ESPN, or any official standings. Only include teams with confirmed outcomes — omit teams whose group is still in progress. (qualify for the Round of 32). Use DraftKings, FanDuel, BetMGM, or any major sportsbook. For already-eliminated teams use +100000; for already-clinched teams use -100000. Provide as a compact object with team names as keys and integer moneyline odds as values.
 
 Respond with ONLY compact, single-line JSON — no markdown, no code fences, no indentation, no commentary — in exactly this shape:
 {"standings":[{"team":"<name>","group":"<A-L>","mp":<int>,"w":<int>,"d":<int>,"l":<int>,"gf":<int>,"ga":<int>,"pts":<int>}],"matches":[{"stage":"group","group":"<A-L>","date":"<ISO 8601>","team1":"<name>","team2":"<name>","score1":<int or null>,"score2":<int or null>,"status":"<FT|LIVE|SCHEDULED>"}],"odds":{"Mexico":-1400,"South Korea":-310}}
@@ -1285,6 +1187,28 @@ function repairJSON(text) {
     if (oEnd !== -1) {
       try {
         result.odds = JSON.parse(body.slice(oStart, oEnd + 1));
+      } catch (e) {}
+    }
+  }
+
+  // Repair status object (same approach as odds — small flat object, usually survives truncation)
+  const statusMatch = body.match(/"status"\s*:\s*\{/);
+  if (statusMatch) {
+    const sStart = statusMatch.index + statusMatch[0].length - 1;
+    let depth = 0,
+      sEnd = -1;
+    for (let i = sStart; i < body.length; i++) {
+      if (body[i] === '{') depth++;else if (body[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          sEnd = i;
+          break;
+        }
+      }
+    }
+    if (sEnd !== -1) {
+      try {
+        result.status = JSON.parse(body.slice(sStart, sEnd + 1));
       } catch (e) {}
     }
   }
@@ -1364,10 +1288,13 @@ async function fetchFromAISearch() {
   // Normalize the raw odds dict (American moneyline → vig-removed implied probs per group)
   const rawOdds = parsed.odds && typeof parsed.odds === 'object' ? parsed.odds : null;
   const liveOdds = rawOdds ? normalizeOddsDict(rawOdds) : null;
+  // Status dict from AI search — maps team name → FIRST|SECOND|WILDCARD|ELIMINATED
+  const liveStatus = parsed.status && typeof parsed.status === 'object' ? parsed.status : {};
   return {
     standings: parseStandings(parsed),
     matches: parseMatches(parsed),
-    liveOdds
+    liveOdds,
+    liveStatus
   };
 }
 
@@ -1464,20 +1391,20 @@ function parseESPNEvents(json) {
   }).filter(m => m.t1 && m.t2);
 }
 
-// Parse ESPN's dedicated standings endpoint — this always has current W/D/L/GD/Pts
-// even for groups that finished weeks ago, unlike the scoreboard which drops old matches.
+// Parse ESPN's dedicated standings endpoint. Returns { standings, status } where
+// status is a dict of team → 'FIRST'|'SECOND'|'WILDCARD'|'ELIMINATED' extracted from
+// ESPN's note/clincher fields — the same signals ESPN uses to color teams green/red.
 function parseESPNStandings(json) {
   const results = [];
+  const status = {};
   const children = json && json.children || (json && json.standings && json.standings.entries ? [json] : []);
-  // ESPN standings nests by group: { children: [{ name: "Group A", standings: { entries: [...] } }] }
   (children.length ? children : [json]).forEach(groupNode => {
     const groupName = groupNode.name || groupNode.abbreviation || '';
-    // Extract group letter from name like "Group A", "Group 1", etc.
     const lm = /Group\s+([A-L])\b/i.exec(groupName);
     const nm = /Group\s+(\d{1,2})\b/i.exec(groupName);
     const grpLetter = lm ? lm[1].toUpperCase() : nm ? GROUP_NUM_TO_LETTER[parseInt(nm[1])] || null : null;
     const entries = groupNode.standings && groupNode.standings.entries || groupNode.entries || [];
-    entries.forEach(entry => {
+    entries.forEach((entry, pos) => {
       var _Object$entries$find;
       const teamName = normalizeTeam(entry.team && (entry.team.displayName || entry.team.shortDisplayName));
       if (!teamName) return;
@@ -1485,7 +1412,35 @@ function parseESPNStandings(json) {
       (entry.stats || []).forEach(s => {
         stats[s.name] = s.value;
       });
-      // ESPN stat names vary: gamesPlayed/matchesPlayed, wins, ties/draws/draws, losses, pointsFor/goalsFor, etc.
+
+      // ESPN embeds advancement status in entry.note or entry.clincher
+      const note = entry.note || entry.clincher || {};
+      const noteText = ((note.text || note.description || note.shortText || '') + ' ' + (note.header || '')).toLowerCase();
+      const noteColor = (note.color || note.type || '').toLowerCase();
+      const noteRank = note.rank !== undefined ? note.rank : pos + 1;
+
+      // Also check a direct "eliminated" or "qualified" boolean some ESPN endpoints expose
+      const isQualified = entry.qualified === true || entry.advanced === true;
+      const isElim = entry.eliminated === true;
+      const textSaysQualified = /qualif|advance|knockout|clinch|round of 32/i.test(noteText);
+      const textSaysWildcard = /wild.?card|third.?place.?quali|best third/i.test(noteText);
+      const textSaysElim = /eliminat|out/i.test(noteText);
+      const colorGreen = /green|#0a0|success/i.test(noteColor);
+      const colorRed = /red|#a00|danger|error/i.test(noteColor);
+      if (isElim || colorRed && !colorGreen || textSaysElim && !textSaysQualified) {
+        status[teamName] = 'ELIMINATED';
+      } else if (isQualified || colorGreen || textSaysQualified) {
+        if (textSaysWildcard) {
+          status[teamName] = 'WILDCARD';
+        } else if (noteRank === 1) {
+          status[teamName] = 'FIRST';
+        } else if (noteRank === 2) {
+          status[teamName] = 'SECOND';
+        } else {
+          // Qualified but rank unknown — infer from group position
+          status[teamName] = pos === 0 ? 'FIRST' : 'SECOND';
+        }
+      }
       results.push({
         team: teamName,
         group: grpLetter || ((_Object$entries$find = Object.entries(GROUPS).find(([, ts]) => ts.includes(teamName))) === null || _Object$entries$find === void 0 ? void 0 : _Object$entries$find[0]) || null,
@@ -1499,7 +1454,10 @@ function parseESPNStandings(json) {
       });
     });
   });
-  return results;
+  return {
+    standings: results,
+    status
+  };
 }
 function computeStandingsFromMatches(groupMatches) {
   const acc = {};
@@ -1561,11 +1519,13 @@ async function fetchFromESPN() {
 
   // Use the standings API for authoritative pts/GD (it stays correct even for
   // groups that completed weeks ago). Fall back to computing from matches if needed.
-  let standings;
+  let standings,
+    espnStatus = {};
   if (standingsJson) {
     try {
       const parsed = parseESPNStandings(standingsJson);
-      standings = parsed.length >= 12 ? parsed : computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+      standings = parsed.standings && parsed.standings.length >= 12 ? parsed.standings : computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
+      espnStatus = parsed.status || {};
     } catch (e) {
       standings = computeStandingsFromMatches(matches.filter(m => m.stage === 'group'));
     }
@@ -1575,7 +1535,8 @@ async function fetchFromESPN() {
   return {
     standings,
     matches,
-    liveOdds: null
+    liveOdds: null,
+    liveStatus: espnStatus
   };
 }
 
@@ -1795,8 +1756,56 @@ const canStillReachWildcard = (team, stats, standings) => {
   const definitelyAhead = thirds.filter(x => x.pts >= myCeiling).length;
   return definitelyAhead < 8;
 };
-const hasClinchedAdvancement = (team, stats, standings, groupMatches) => hasClinchedTop2(team, stats, standings, groupMatches) || hasClinchedWildcard(team, stats, standings);
+
+// ── Dynamic live status (populated from ESPN/AI-search on each refresh) ─────────
+// This is checked before KNOWN_STATUS and the mathematical logic.
+// Updated by updateLiveStatus() which is called from the refresh function.
+let _liveStatus = {};
+const updateLiveStatus = dict => {
+  if (!dict || typeof dict !== 'object') return;
+  // Validate and merge — only accept known status codes
+  Object.entries(dict).forEach(([team, val]) => {
+    const normalized = normalizeTeam(team) || team;
+    if (['FIRST', 'SECOND', 'WILDCARD', 'ELIMINATED'].includes(val)) {
+      _liveStatus[normalized] = val;
+    }
+  });
+};
+
+// ── Known group-stage outcomes (hardcoded fallback) ───────────────────────────
+// ESPN's scoreboard API drops historical match data for completed groups, causing
+// the clinch/elimination math to give wrong answers (mp stays 0, pts stays 0).
+// This table provides authoritative overrides sourced from official results.
+// Values: 'FIRST' | 'SECOND' | 'WILDCARD' | 'ELIMINATED'
+// Only add entries for groups that are 100% complete or individually confirmed.
+const KNOWN_STATUS = {
+  // Group A — COMPLETE (final matchday June 24)
+  'Mexico': 'FIRST',
+  // 9pts, 3W
+  'South Africa': 'SECOND',
+  // 4pts, 1W 1D 1L
+  'Czechia': 'ELIMINATED',
+  // 1pt, 4th
+
+  // Group B — COMPLETE
+  'Switzerland': 'FIRST',
+  'Canada': 'SECOND',
+  'Bosnia and Herzegovina': 'WILDCARD',
+  // 3rd, qualified as wildcard
+  'Qatar': 'ELIMINATED',
+  // Individually confirmed eliminated:
+  'Turkey': 'ELIMINATED',
+  'Tunisia': 'ELIMINATED',
+  'Jordan': 'ELIMINATED',
+  'Panama': 'ELIMINATED'
+};
+const hasClinchedAdvancement = (team, stats, standings, groupMatches) => {
+  const k = _liveStatus[team] || KNOWN_STATUS[team];
+  if (k === 'FIRST' || k === 'SECOND' || k === 'WILDCARD') return true;
+  return hasClinchedTop2(team, stats, standings, groupMatches) || hasClinchedWildcard(team, stats, standings);
+};
 const isEliminated = (team, stats, standings) => {
+  if (_liveStatus[team] === 'ELIMINATED' || KNOWN_STATUS[team] === 'ELIMINATED') return true;
   const s = stats[team];
   if (!s || s.mp === 0) return false;
   const st = standings[s.group];
@@ -1814,10 +1823,11 @@ const isEliminated = (team, stats, standings) => {
 
 // Returns the best available implied probability for a team to advance past the group stage.
 // Priority order:
-//   1. Mathematically clinched → 1.0 exactly
-//   2. Mathematically eliminated → 0.0 exactly
-//   3. liveOdds (current sportsbook odds fetched this session, vig-normalized) → use directly
-//   4. SEED_ODDS (pre-tournament odds normalized per group, updated June 23 2026) → fallback
+//   1. KNOWN_STATUS override (confirmed official results) → 0.0 or 1.0
+//   2. Mathematically clinched → 1.0 exactly
+//   3. Mathematically eliminated → 0.0 exactly
+//   4. liveOdds (current sportsbook odds fetched this session, vig-normalized) → use directly
+//   5. SEED_ODDS (pre-tournament odds normalized per group, updated June 23 2026) → fallback
 // The returned value is always a clean 0–1 implied probability.
 const getAdvProb = (team, stats, standings, groupMatches, liveOdds) => {
   var _SEED_ODDS$team;
@@ -1827,6 +1837,12 @@ const getAdvProb = (team, stats, standings, groupMatches, liveOdds) => {
   return (_SEED_ODDS$team = SEED_ODDS[team]) !== null && _SEED_ODDS$team !== void 0 ? _SEED_ODDS$team : 0.5;
 };
 const getClinch = (team, stats, standings, groupMatches) => {
+  // Priority 1: live status from this session's ESPN/AI-search refresh
+  const live = _liveStatus[team] || KNOWN_STATUS[team];
+  if (live === 'FIRST') return 'FIRST';
+  if (live === 'SECOND') return 'SECOND';
+  if (live === 'WILDCARD') return 'WILDCARD';
+  if (live === 'ELIMINATED') return 'ELIMINATED';
   const s = stats[team];
   if (!s || s.mp === 0) return null;
   const st = standings[s.group];
@@ -4311,7 +4327,8 @@ function App() {
         standings,
         matches: newMatches,
         source,
-        liveOdds: freshOdds
+        liveOdds: freshOdds,
+        liveStatus: freshStatus
       } = await fetchLiveData();
       const merged = newMatches && newMatches.length ? mergeMatches(matchesRef.current, newMatches) : matchesRef.current;
       if (standings && standings.length) setStandingsArr(standings);
@@ -4324,10 +4341,12 @@ function App() {
       setCooldownUntil(0);
       const now = new Date();
       setLastUpdated(now);
+      if (freshStatus && Object.keys(freshStatus).length) updateLiveStatus(freshStatus);
       saveCache({
         standings: standings && standings.length ? standings : standingsRef.current,
         matches: merged,
         liveOdds: freshOdds || liveOdds,
+        liveStatus: _liveStatus,
         ts: now.getTime()
       });
       scheduleNext(source === 'espn' ? 60 * 1000 : 10 * 60 * 1000);
@@ -4354,6 +4373,7 @@ function App() {
         if (c.standings) setStandingsArr(c.standings);
         if (c.matches) setMatches(c.matches);
         if (c.liveOdds) setLiveOdds(c.liveOdds);
+        if (c.liveStatus) updateLiveStatus(c.liveStatus);
         if (c.ts) setLastUpdated(new Date(c.ts));
       }
       refresh();
@@ -4538,20 +4558,8 @@ function App() {
     }
   }, "Live scores via ESPN where reachable, with an AI web-search fallback inside the Claude.ai artifact sandbox — may lag actual play by a minute or two · 2026 FIFA World Cup · USA, Canada & Mexico")));
 }
-
-// ── Mount ─────────────────────────────────────────────────────────────────────
-try {
-  setStatus('Mounting React…');
-  var _root = ReactDOM.createRoot(document.getElementById('root'));
-  _root.render(
-    React.createElement(ErrorBoundary, null,
-      React.createElement(App)
-    )
-  );
-  // Status div is inside #root and will be replaced by React
-} catch (e) {
-  showFatalError('mount error', e.message + '<br><pre style="font-size:11px">' + (e.stack||'') + '</pre>');
-}
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
 </script>
 </body>
 </html>
