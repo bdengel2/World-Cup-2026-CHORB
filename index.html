@@ -1114,22 +1114,32 @@ function normalizeTeam(name) {
 
 const GROUPS_TEXT = Object.entries(GROUPS).map(([g, teams]) => `Group ${g}: ${teams.join(', ')}`).join('\n');
 function buildCombinedPrompt() {
-  return `Search the web for the current 2026 FIFA World Cup (June 11 - July 19, 2026, USA/Canada/Mexico) group standings, full match schedule, AND the latest sportsbook odds for each team to advance past the group stage, all as of right now.
+  return `Search the web — including fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/standings — for current 2026 FIFA World Cup data (June 11–July 19, 2026, USA/Canada/Mexico).
 
 Use exactly these team name spellings and group assignments:
 ${GROUPS_TEXT}
 
-Find:
-1. Standings for all 12 groups: matches played, won, drawn, lost, goals for, goals against, points for every one of the 48 teams above.
-2. ALL 72 group-stage matches — completed, in progress, AND not yet played. Include official date AND kickoff time in UTC ISO 8601 (e.g. "2026-06-19T19:00:00Z"), group letter, both team names, both scores, and status. Unplayed matches: score1/score2 null, status "SCHEDULED". Include all 72.
-3. Any knockout-stage match (R32/R16/QF/SF/Final) that's completed, in progress, or has confirmed teams and a date.
-4. Current sportsbook American moneyline odds for each of the 48 teams to advance past the group stage (qualify for the Round of 32). Use DraftKings, FanDuel, BetMGM, or any major sportsbook. For already-eliminated teams use +100000; for already-clinched teams use -100000. Provide as a compact object with team names as keys and integer moneyline odds as values.
-5. Official advancement status for every team whose group-stage fate is confirmed: which teams have officially qualified for the Round of 32 (as group winner, runner-up, or wildcard 3rd place) and which have been officially eliminated. Source from FIFA.com, ESPN, or any official standings. Only include teams with confirmed outcomes — omit teams whose group is still in progress. (qualify for the Round of 32). Use DraftKings, FanDuel, BetMGM, or any major sportsbook. For already-eliminated teams use +100000; for already-clinched teams use -100000. Provide as a compact object with team names as keys and integer moneyline odds as values.
+Find ALL of the following:
 
-Respond with ONLY compact, single-line JSON — no markdown, no code fences, no indentation, no commentary — in exactly this shape:
-{"standings":[{"team":"<name>","group":"<A-L>","mp":<int>,"w":<int>,"d":<int>,"l":<int>,"gf":<int>,"ga":<int>,"pts":<int>}],"matches":[{"stage":"group","group":"<A-L>","date":"<ISO 8601>","team1":"<name>","team2":"<name>","score1":<int or null>,"score2":<int or null>,"status":"<FT|LIVE|SCHEDULED>"}],"odds":{"Mexico":-1400,"South Korea":-310}}
+1. Standings for all 12 groups: MP, W, D, L, GF, GA, Pts for every team.
 
-Keep JSON maximally compact. The odds object is just team name → integer moneyline. Never invent match results.`;
+2. ALL 72 group-stage matches — completed, live, and scheduled. Include UTC ISO 8601 date, group letter, both team names, both scores (null if unplayed), and status (FT/LIVE/SCHEDULED). Include all 72.
+
+3. Any confirmed knockout matches (R32/R16/QF/SF/Final) with teams, scores, date, status, and city.
+
+4. Current sportsbook American moneyline odds for all 48 teams to advance past the group stage (DraftKings/FanDuel/BetMGM). Eliminated teams: +100000. Clinched: -100000.
+
+5. Official advancement status — check fifa.com standings for the green (qualified) and red (eliminated) markers. For each team with a confirmed outcome include:
+   - FIRST = group winner
+   - SECOND = group runner-up  
+   - WILDCARD = qualified as one of the 8 best third-place teams
+   - ELIMINATED = officially out (either 4th in group, or 3rd but not in top-8 third-place ranking)
+   Only include teams with CONFIRMED outcomes. Crucially: third-place teams are only WILDCARD if FIFA has officially confirmed they are in the top 8 third-place finishers — otherwise omit them (their group may still be in progress or the third-place ranking may not yet be finalised).
+
+Respond with ONLY compact single-line JSON in this exact shape:
+{"standings":[{"team":"<name>","group":"<A-L>","mp":<int>,"w":<int>,"d":<int>,"l":<int>,"gf":<int>,"ga":<int>,"pts":<int>}],"matches":[{"stage":"group","group":"<A-L>","date":"<ISO 8601>","team1":"<name>","team2":"<name>","score1":<int or null>,"score2":<int or null>,"status":"<FT|LIVE|SCHEDULED>"}],"odds":{"Mexico":-1400},"status":{"Mexico":"FIRST","Qatar":"ELIMINATED"}}
+
+No markdown, no code fences, no commentary. Never invent results.`;
 }
 
 // Tries a normal parse first. If the response got cut off by the token limit before
@@ -1742,8 +1752,11 @@ const hasClinchedWildcard = (team, stats, standings) => {
   return threats < 8;
 };
 
-// Could this team still possibly reach a wildcard spot at all (not yet eliminated
-// from that race), checked against every other group's 3rd-place ceiling/floor.
+// Could this team still possibly reach a wildcard spot?
+// Key fix: only count teams from COMPLETE groups (all 4 teams have mp===3) as
+// "definitely ahead" — in-progress groups' current 3rd-place teams might still
+// change position, so they can't definitively block a team from wildcard contention.
+const isGroupComplete = (group, stats) => (GROUPS[group] || []).every(t => stats[t] && stats[t].mp >= 3);
 const canStillReachWildcard = (team, stats, standings) => {
   const s = stats[team];
   if (!s) return false;
@@ -1751,12 +1764,17 @@ const canStillReachWildcard = (team, stats, standings) => {
   if (!st) return false;
   const rem = 3 - s.mp;
   const pos = st.indexOf(team);
-  // If this team's own group is already finished, the only way into the wildcard
-  // pool is having actually finished 3rd in it — that's now fixed, not a possibility.
+  // If this team's OWN group is finished and they're not 3rd, they can't enter the pool
   if (rem === 0 && pos !== 2) return false;
   const myCeiling = s.pts + rem * 3;
-  const thirds = getAllThirds(stats, standings).filter(x => x.team !== team);
-  const definitelyAhead = thirds.filter(x => x.pts >= myCeiling).length;
+  // Only compare against 3rd-place teams whose GROUP IS COMPLETE — mid-tournament
+  // groups might still reshuffle, so their current 3rd-place team may change
+  const definitelyAhead = getAllThirds(stats, standings).filter(x => {
+    if (x.team === team) return false;
+    const theirGroup = stats[x.team] && stats[x.team].group;
+    // Only count if their group is fully played out
+    return isGroupComplete(theirGroup, stats) && x.pts >= myCeiling;
+  }).length;
   return definitelyAhead < 8;
 };
 
@@ -1766,12 +1784,19 @@ const canStillReachWildcard = (team, stats, standings) => {
 let _liveStatus = {};
 const updateLiveStatus = dict => {
   if (!dict || typeof dict !== 'object') return;
-  // Validate and merge — only accept known status codes
   Object.entries(dict).forEach(([team, val]) => {
     const normalized = normalizeTeam(team) || team;
-    if (['FIRST', 'SECOND', 'WILDCARD', 'ELIMINATED'].includes(val)) {
-      _liveStatus[normalized] = val;
+    if (!['FIRST', 'SECOND', 'WILDCARD', 'ELIMINATED'].includes(val)) return;
+    // Don't let the live feed mark a team ELIMINATED if their group isn't in KNOWN_STATUS
+    // (meaning we haven't confirmed that group is complete) — prevents the AI from
+    // prematurely eliminating wildcard contenders like Senegal/Iraq before Group I ends.
+    if (val === 'ELIMINATED') {
+      const grpTeams = Object.entries(GROUPS).find(([, ts]) => ts.includes(normalized));
+      const group = grpTeams ? grpTeams[0] : null;
+      const groupKnown = group && (GROUPS[group] || []).some(t => KNOWN_STATUS[t]);
+      if (!groupKnown) return; // skip ELIMINATED if group isn't confirmed complete
     }
+    _liveStatus[normalized] = val;
   });
 };
 
@@ -1800,7 +1825,18 @@ const KNOWN_STATUS = {
   'Turkey': 'ELIMINATED',
   'Tunisia': 'ELIMINATED',
   'Jordan': 'ELIMINATED',
-  'Panama': 'ELIMINATED'
+  'Panama': 'ELIMINATED',
+  // Group E — COMPLETE (final matchday June 25)
+  'Germany': 'FIRST',
+  'Ivory Coast': 'SECOND',
+  'Ecuador': 'WILDCARD',
+  // beat Germany 2-1; qualified as 3rd-place wildcard
+  'Curaçao': 'ELIMINATED',
+  // Group F — COMPLETE (final matchday June 25)
+  'Netherlands': 'FIRST',
+  'Japan': 'SECOND',
+  'Sweden': 'WILDCARD' // drew with Japan 1-1; all three advanced
+  // Tunisia already in list above
 };
 const hasClinchedAdvancement = (team, stats, standings, groupMatches) => {
   const k = _liveStatus[team] || KNOWN_STATUS[team];
@@ -1814,9 +1850,10 @@ const isEliminated = (team, stats, standings) => {
   const st = standings[s.group];
   if (!st) return false;
   const pos = st.indexOf(team);
-  // After all 3 group matches, 4th place is definitively eliminated —
-  // no top-2 path and only the 3rd-place team (not 4th) is eligible for the wildcard.
-  if (s.mp === 3 && pos === 3) return true;
+  // After ALL 4 teams in the group have finished their 3 matches, 4th place is
+  // definitively eliminated. Don't use this shortcut if the group isn't truly done —
+  // ESPN sometimes returns stale mp counts while matches are still pending.
+  if (isGroupComplete(s.group, stats) && pos === 3) return true;
   const rem = 3 - s.mp;
   const myCeiling = s.pts + rem * 3;
   const guaranteedAheadForTop2 = st.filter(t => t !== team && stats[t].pts > myCeiling).length;
