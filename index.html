@@ -2108,36 +2108,10 @@ const COLUMNS = [{
   key: 'owner',
   label: 'Owner'
 }, {
-  key: 'group',
-  label: 'Grp'
-}, {
-  key: 'mp',
-  label: 'MP'
-}, {
-  key: 'w',
-  label: 'W'
-}, {
-  key: 'd',
-  label: 'D'
-}, {
-  key: 'l',
-  label: 'L'
-}, {
-  key: 'gf',
-  label: 'GF'
-}, {
-  key: 'ga',
-  label: 'GA'
-}, {
-  key: 'gd',
-  label: 'GD'
-}, {
-  key: 'pts',
-  label: 'Pts'
-}, {
   key: 'prob',
-  label: 'Probability to advance past group stage'
-}];
+  label: 'Sort'
+} // shows ▲/▼ when sorted; default sort target
+];
 function getSortValue(team, key, stats, standings, groupMatches, liveOdds) {
   const s = stats[team];
   switch (key) {
@@ -2177,6 +2151,7 @@ function GroupStageTab({
 }) {
   const [scheduleGroup, setScheduleGroup] = useState('ALL');
   const [showSchedule, setShowSchedule] = useState(true);
+  const [filterOwner, setFilterOwner] = useState(PLAYERS[0]); // Default to first player (Alyssa)
   const [sortKey, setSortKey] = useState('pts');
   const [sortDir, setSortDir] = useState(-1);
   const onHeaderClick = key => {
@@ -2257,14 +2232,23 @@ function GroupStageTab({
   const liveNow = groupEvents.filter(e => e.state === 'in');
   const totalAlive = ALL_TEAMS.filter(t => getClinch(t, stats, standings, groupEvents) !== 'ELIMINATED').length;
   const matchesPlayed = groupEvents.filter(e => e.completed).length;
-  const sortedTeams = [...activeTeams].sort((a, b) => {
+  const filteredTeams = filterOwner === 'ALL' ? activeTeams : activeTeams.filter(t => PICKS[t] === filterOwner);
+  const sortedTeams = [...filteredTeams].sort((a, b) => {
     const va = getSortValue(a, sortKey, stats, standings, groupEvents, liveOdds);
     const vb = getSortValue(b, sortKey, stats, standings, groupEvents, liveOdds);
     if (va < vb) return -1 * sortDir;
     if (va > vb) return 1 * sortDir;
     return 0;
   });
-  const sortedSchedule = [...groupEvents].filter(e => scheduleGroup === 'ALL' || e.group === scheduleGroup).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const sortedSchedule = [...groupEvents].filter(e => scheduleGroup === 'ALL' || e.group === scheduleGroup).sort((a, b) => {
+    // Ordering: live first (0), then scheduled/upcoming (1), then completed (2)
+    const order = e => e.state === 'in' ? 0 : !e.completed ? 1 : 2;
+    const diff = order(a) - order(b);
+    if (diff !== 0) return diff;
+    // Within upcoming: soonest first. Within completed: newest first.
+    const mult = a.completed ? -1 : 1;
+    return mult * (new Date(a.date || 0) - new Date(b.date || 0));
+  });
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
@@ -2498,13 +2482,34 @@ function GroupStageTab({
       fontWeight: 700,
       fontSize: 14
     }
-  }, "All 48 teams"), /*#__PURE__*/React.createElement("span", {
+  }, filterOwner === 'ALL' ? 'All 48 Teams' : `${filterOwner}'s Teams (${filteredTeams.length})`), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
       color: T.textTertiary,
       marginLeft: 'auto'
     }
-  }, activeTeams.length, " teams · tap column to sort")), /*#__PURE__*/React.createElement("div", {
+  }, "tap column to sort")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      padding: '8px 12px',
+      borderBottom: `1px solid ${T.borderLight}`,
+      flexWrap: 'wrap'
+    }
+  }, ['ALL', ...PLAYERS].map(p => /*#__PURE__*/React.createElement("button", {
+    key: p,
+    onClick: () => setFilterOwner(p),
+    style: {
+      padding: '3px 10px',
+      borderRadius: 12,
+      fontSize: 11,
+      fontWeight: 600,
+      cursor: 'pointer',
+      background: filterOwner === p ? p === 'ALL' ? T.accent : PC[p].hex : T.cardAlt,
+      color: filterOwner === p ? '#fff' : p === 'ALL' ? T.textSecondary : PC[p].hex,
+      border: `1px solid ${filterOwner === p ? 'transparent' : p === 'ALL' ? T.border : PC[p].hex}`
+    }
+  }, p))), /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto',
       WebkitOverflowScrolling: 'touch'
@@ -2514,7 +2519,7 @@ function GroupStageTab({
       width: '100%',
       borderCollapse: 'collapse',
       fontSize: 12,
-      minWidth: 520
+      minWidth: 280
     }
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
     style: {
@@ -2536,7 +2541,7 @@ function GroupStageTab({
       userSelect: 'none',
       borderBottom: `2px solid ${T.border}`
     }
-  }, col.label, sortKey === col.key ? sortDir === 1 ? ' ▲' : ' ▼' : '')))), /*#__PURE__*/React.createElement("tbody", null, sortedTeams.map((team, idx) => {
+  }, col.label, col.key === 'prob' && sortKey !== col.key ? ' ↑↓' : '', sortKey === col.key ? sortDir === 1 ? ' ▲' : ' ▼' : '')))), /*#__PURE__*/React.createElement("tbody", null, sortedTeams.map((team, idx) => {
     const s = stats[team];
     const clinch = getClinch(team, stats, standings, groupEvents);
     const prob = getAdvProb(team, stats, standings, groupEvents, liveOdds);
@@ -2578,78 +2583,19 @@ function GroupStageTab({
       }
     }, PICKS[team] && /*#__PURE__*/React.createElement("span", {
       style: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: 700,
         color: PC[PICKS[team]].hex
       }
     }, PICKS[team])), /*#__PURE__*/React.createElement("td", {
       style: {
         padding: '7px 8px',
-        color: T.accent,
-        fontWeight: 700
-      }
-    }, s.group), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.textSecondary
-      }
-    }, s.mp), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.green,
-        fontWeight: 700
-      }
-    }, s.w), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.gold
-      }
-    }, s.d), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.red
-      }
-    }, s.l), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.textSecondary
-      }
-    }, s.gf), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.textSecondary
-      }
-    }, s.ga), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: s.gf - s.ga >= 0 ? T.textSecondary : T.red
-      }
-    }, s.gf - s.ga > 0 ? '+' : '', s.gf - s.ga), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px',
-        color: T.textPrimary,
-        fontWeight: 700
-      }
-    }, s.pts), /*#__PURE__*/React.createElement("td", {
-      style: {
-        padding: '7px 8px'
+        minWidth: 120
       }
     }, clinchedAdvancement ? /*#__PURE__*/React.createElement(ClinchedCheck, null) : isElim ? /*#__PURE__*/React.createElement(EliminatedX, null) : /*#__PURE__*/React.createElement(ProbBar, {
       prob: prob
     })));
-  })))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '8px 14px',
-      borderTop: `1px solid ${T.borderLight}`,
-      fontSize: 10,
-      color: T.textTertiary,
-      lineHeight: 1.5
-    }
-  }, /*#__PURE__*/React.createElement("strong", {
-    style: {
-      color: T.textSecondary
-    }
-  }, "Probability"), " = sportsbook-implied odds (vig removed). ✓ Clinched or ✕ Eliminated once mathematically certain.")), /*#__PURE__*/React.createElement("button", {
+  }))))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowSchedule(!showSchedule),
     style: {
       padding: '9px 16px',
@@ -4144,7 +4090,7 @@ function KnockoutTab({
         color: PC[p].hex,
         fontSize: 16
       }
-    }, remaining[p]), " team", remaining[p] !== 1 ? 's' : '', " remaining"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, remaining[p]), " Team", remaining[p] !== 1 ? 's' : '', " Remaining"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 9,
         color: T.textFaint,
