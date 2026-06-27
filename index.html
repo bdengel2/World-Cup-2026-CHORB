@@ -12,7 +12,7 @@
 <body>
 <div id="root"></div>
 <script>
-if (!window.storage) { const mem={}; window.storage={get:async(k)=>(k in mem?{key:k,value:mem[k]}:(()=>{throw new Error('nf')})()),set:async(k,v)=>{mem[k]=v;return{key:k,value:v}},delete:async(k)=>{delete mem[k];return{key:k,deleted:true}},list:async()=>({keys:Object.keys(mem)})}; }
+if (!window.storage){const mem={};window.storage={get:async(k)=>(k in mem?{key:k,value:mem[k]}:(()=>{throw new Error('nf')})()),set:async(k,v)=>{mem[k]=v;return{key:k,value:v}},delete:async(k)=>{delete mem[k];return{key:k,deleted:true}},list:async()=>({keys:Object.keys(mem)})}}
 </script>
 <script>
 const {
@@ -2095,9 +2095,6 @@ const KNOWN_STATUS = {
 
   // Group L — Panama confirmed eliminated (0pts, cannot reach top-8 wildcard)
   'Panama': 'ELIMINATED'
-  // England confirmed advancing (FIFA green marker) but exact position (1st/2nd/wildcard) TBD June 27
-  // Colombia confirmed advancing (6pts, FIFA green) but exact position (1st/2nd) TBD June 27
-  // Group K and L final matches June 27 — all other positions TBD
 };
 const hasClinchedAdvancement = (team, stats, standings, groupMatches) => {
   const k = _liveStatus[team] || KNOWN_STATUS[team];
