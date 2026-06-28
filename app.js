@@ -989,7 +989,47 @@ const KO_SIZES = {
   SF: 2,
   Final: 1
 };
-const R32_SEEDS = [['1A', '2B'], ['1B', '2A'], ['1C', '2D'], ['1D', '2C'], ['1E', '2F'], ['1F', '2E'], ['1G', '2H'], ['1H', '2G'], ['1I', '2J'], ['1J', '2I'], ['1K', '2L'], ['1L', '2K'], ['3rd', '3rd'], ['3rd', '3rd'], ['3rd', '3rd'], ['3rd', '3rd']];
+const R32_SEEDS = [
+// R16 match 1: Canada/SA winner vs Netherlands/Morocco winner  
+['1B', '2A'],
+// Canada vs South Africa
+['1F', '2C'],
+// Netherlands vs Morocco
+// R16 match 2: Brazil/Japan winner vs Germany/Paraguay winner
+['1C', '2F'],
+// Brazil vs Japan
+['1E', '3D'],
+// Germany vs Paraguay (D wildcard)
+// R16 match 3: Ivory Coast/Norway winner vs France/Sweden winner
+['2E', '1I'],
+// Ivory Coast vs Norway
+['2I', '3F'],
+// France vs Sweden (F wildcard)
+// R16 match 4: Mexico/Ecuador winner vs Switzerland/Algeria winner
+['1A', '3E'],
+// Mexico vs Ecuador (E wildcard)
+['2B', '3J'],
+// Switzerland vs Algeria (J wildcard)
+// R16 match 5: Belgium/Senegal winner vs USA/Bosnia winner
+['1G', '3I'],
+// Belgium vs Senegal (I wildcard)
+['1D', '3B'],
+// USA vs Bosnia (B wildcard)
+// R16 match 6: England/DR Congo winner vs Portugal/Croatia winner
+['1L', '3K'],
+// England vs DR Congo (K wildcard)
+['2K', '3L'],
+// Portugal vs Croatia (L wildcard)
+// R16 match 7: Spain/Austria winner vs Argentina/Cape Verde winner
+['1H', '2J'],
+// Spain vs Austria
+['1J', '2H'],
+// Argentina vs Cape Verde
+// R16 match 8: Colombia/Ghana winner vs Egypt/? winner
+['1K', '2L'],
+// Colombia vs Ghana
+['2G', '3A'] // Egypt vs South Korea wildcard (provisional)
+];
 
 // ═══════════════════ TEAM NAME NORMALIZATION ═══════════════════
 
@@ -2034,11 +2074,11 @@ const KNOWN_STATUS = {
   'Canada': 'SECOND',
   'Bosnia and Herzegovina': 'WILDCARD',
   'Qatar': 'ELIMINATED',
-  // Group D — COMPLETE: USA FIRST, Australia SECOND, Paraguay ELIMINATED (3rd, not top-8), Turkey ELIMINATED
+  // Group D — COMPLETE: USA FIRST, Australia SECOND, Paraguay WILDCARD (4pts, GD-2, confirmed R32 vs Germany), Turkey ELIMINATED
   'USA': 'FIRST',
   'Australia': 'SECOND',
-  'Paraguay': 'ELIMINATED',
-  // 3rd with 4pts but -2 GD, failed top-8 wildcard ranking
+  'Paraguay': 'WILDCARD',
+  // confirmed R32 match vs Germany
   'Turkey': 'ELIMINATED',
   // Group E — COMPLETE: Germany FIRST, Ivory Coast SECOND, Ecuador WILDCARD, Curaçao ELIMINATED
   'Germany': 'FIRST',
@@ -2050,6 +2090,11 @@ const KNOWN_STATUS = {
   'Japan': 'SECOND',
   'Sweden': 'WILDCARD',
   'Tunisia': 'ELIMINATED',
+  // Group C — COMPLETE: Brazil FIRST (7pts), Morocco SECOND (7pts, 2nd on GD), Scotland ELIMINATED, Haiti ELIMINATED
+  'Brazil': 'FIRST',
+  'Morocco': 'SECOND',
+  'Scotland': 'ELIMINATED',
+  'Haiti': 'ELIMINATED',
   // Group G — COMPLETE: Belgium 5pts FIRST (GD+5), Egypt 5pts SECOND (GD+2), Iran ELIMINATED, NZ ELIMINATED
   'Belgium': 'FIRST',
   'Egypt': 'SECOND',
@@ -2067,11 +2112,11 @@ const KNOWN_STATUS = {
   'France': 'SECOND',
   'Senegal': 'WILDCARD',
   'Iraq': 'ELIMINATED',
-  // Group J — COMPLETE: Argentina 7pts FIRST, Austria 4pts SECOND, Algeria ELIMINATED, Jordan ELIMINATED
+  // Group J — COMPLETE: Argentina FIRST, Austria SECOND, Algeria WILDCARD (4pts, GD-2, GF5 — 8th wildcard), Jordan ELIMINATED
   'Argentina': 'FIRST',
   'Austria': 'SECOND',
-  'Algeria': 'ELIMINATED',
-  // 4pts 3rd but GD-2, failed top-8 ranking
+  'Algeria': 'WILDCARD',
+  // 4pts, GD-2, GF 5 — ranks 8th among 3rd-place teams
   'Jordan': 'ELIMINATED',
   // Group K — COMPLETE: Colombia FIRST, Portugal SECOND, DR Congo WILDCARD (confirmed R32 vs England), Uzbekistan ELIMINATED
   'Colombia': 'FIRST',
@@ -2090,12 +2135,12 @@ const KNOWN_STATUS = {
   // Group C — results not yet available; handled by live data
 };
 const hasClinchedAdvancement = (team, stats, standings, groupMatches) => {
-  const k = _liveStatus[team] || KNOWN_STATUS[team];
+  const k = KNOWN_STATUS[team] || _liveStatus[team];
   if (k === 'FIRST' || k === 'SECOND' || k === 'WILDCARD') return true;
   return hasClinchedTop2(team, stats, standings, groupMatches) || hasClinchedWildcard(team, stats, standings);
 };
 const isEliminated = (team, stats, standings) => {
-  if (_liveStatus[team] === 'ELIMINATED' || KNOWN_STATUS[team] === 'ELIMINATED') return true;
+  if (KNOWN_STATUS[team] === 'ELIMINATED' || _liveStatus[team] === 'ELIMINATED') return true;
   const s = stats[team];
   if (!s || s.mp === 0) return false;
   const st = standings[s.group];
@@ -2128,8 +2173,11 @@ const getAdvProb = (team, stats, standings, groupMatches, liveOdds) => {
   return (_SEED_ODDS$team = SEED_ODDS[team]) !== null && _SEED_ODDS$team !== void 0 ? _SEED_ODDS$team : 0.5;
 };
 const getClinch = (team, stats, standings, groupMatches) => {
-  // Priority 1: live status from this session's ESPN/AI-search refresh
-  const live = _liveStatus[team] || KNOWN_STATUS[team];
+  // Priority 1: hardcoded KNOWN_STATUS (manually verified — always trusted over live feed)
+  const known = KNOWN_STATUS[team];
+  if (known) return known;
+  // Priority 2: live status from this session's ESPN/AI-search refresh
+  const live = _liveStatus[team];
   if (live === 'FIRST') return 'FIRST';
   if (live === 'SECOND') return 'SECOND';
   if (live === 'WILDCARD') return 'WILDCARD';
@@ -3597,7 +3645,7 @@ function BracketCard({
       whiteSpace: 'nowrap',
       fontSize: 10
     }
-  }, team || ''), team && /*#__PURE__*/React.createElement(OwnerBadge, {
+  }, team && winner === team ? '🏆 ' : '', team || ''), team && /*#__PURE__*/React.createElement(OwnerBadge, {
     owner: own
   }), team && prob !== null && /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3713,20 +3761,55 @@ function KnockoutTab({
     }
     return slots;
   })();
+
+  // Determine winner of a slot (null = not yet played)
+  const slotWinner = slot => {
+    if (!slot || !slot.completed || slot.s1 === null || slot.s2 === null) return null;
+    if (slot.s1 > slot.s2) return slot.t1;
+    if (slot.s2 > slot.s1) return slot.t2;
+    return null; // draw (shouldn't happen in knockout)
+  };
   const getRoundSlots = round => {
     const real = knockoutEvents.filter(e => e.round === round).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
     if (round === 'R32' && usingProjection) return projectedR32;
     const size = KO_SIZES[round];
+    // For rounds after R32, project from previous round winners if real data is sparse
+    const prevRound = {
+      R16: 'R32',
+      QF: 'R16',
+      SF: 'QF',
+      Final: 'SF'
+    }[round];
+    const prevSlots = prevRound ? getRoundSlots(prevRound) : null;
     const slots = [];
     for (let i = 0; i < size; i++) {
-      slots.push(real[i] || {
-        t1: 'TBD',
-        t2: 'TBD',
-        s1: null,
-        s2: null,
-        completed: false,
-        state: 'pre'
-      });
+      const existing = real[i];
+      if (existing && (existing.t1 !== 'TBD' || existing.t2 !== 'TBD')) {
+        slots.push(existing);
+      } else if (prevSlots) {
+        // Project: pair consecutive previous-round winners
+        const a = prevSlots[i * 2],
+          b = prevSlots[i * 2 + 1];
+        const t1 = slotWinner(a) || 'TBD';
+        const t2 = slotWinner(b) || 'TBD';
+        slots.push(existing || {
+          t1,
+          t2,
+          s1: null,
+          s2: null,
+          completed: false,
+          state: 'pre'
+        });
+      } else {
+        slots.push({
+          t1: 'TBD',
+          t2: 'TBD',
+          s1: null,
+          s2: null,
+          completed: false,
+          state: 'pre'
+        });
+      }
     }
     return slots;
   };
