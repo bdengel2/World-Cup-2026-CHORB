@@ -3687,34 +3687,21 @@ function BracketLines() {
     const xLeft = bracketLeft(r) + 150;
     const xRight = bracketLeft(r + 1);
     const xMid = xLeft + (xRight - xLeft) / 2;
-    if (round === 'R32') {
-      // R32→R16: non-adjacent per ESPN bracket, use R32_TO_R16_SLOT mapping
-      for (let i = 0; i < 16; i++) {
-        const yR32 = bracketTop(r, i) + MATCH_CARD_H / 2;
-        const yR16 = bracketTop(r + 1, R32_TO_R16_SLOT[i]) + MATCH_CARD_H / 2;
-        lines.push(/*#__PURE__*/React.createElement("polyline", {
-          key: `r32-${i}`,
-          points: `${xLeft},${yR32} ${xMid},${yR32} ${xMid},${yR16} ${xRight},${yR16}`,
-          fill: "none", stroke: T.border, strokeWidth: "1"
-        }));
-      }
-    } else {
-      // R16 onward: standard adjacent pairs
-      for (let i = 0; i < count; i += 2) {
-        const y1 = bracketTop(r, i) + MATCH_CARD_H / 2;
-        const y2 = bracketTop(r, i + 1) + MATCH_CARD_H / 2;
-        const yn = bracketTop(r + 1, Math.floor(i / 2)) + MATCH_CARD_H / 2;
-        lines.push(/*#__PURE__*/React.createElement("polyline", {
-          key: `${r}-${i}`,
-          points: `${xLeft},${y1} ${xMid},${y1} ${xMid},${yn} ${xRight},${yn}`,
-          fill: "none", stroke: T.border, strokeWidth: "1"
-        }));
-        lines.push(/*#__PURE__*/React.createElement("polyline", {
-          key: `${r}-${i + 1}`,
-          points: `${xLeft},${y2} ${xMid},${y2} ${xMid},${yn} ${xRight},${yn}`,
-          fill: "none", stroke: T.border, strokeWidth: "1"
-        }));
-      }
+    // All rounds: clean adjacent pairs (R32 reordered so pairs are adjacent)
+    for (let i = 0; i < count; i += 2) {
+      const y1 = bracketTop(r, i) + MATCH_CARD_H / 2;
+      const y2 = bracketTop(r, i + 1) + MATCH_CARD_H / 2;
+      const yn = bracketTop(r + 1, Math.floor(i / 2)) + MATCH_CARD_H / 2;
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i}`,
+        points: `${xLeft},${y1} ${xMid},${y1} ${xMid},${yn} ${xRight},${yn}`,
+        fill: "none", stroke: T.border, strokeWidth: "1"
+      }));
+      lines.push(/*#__PURE__*/React.createElement("polyline", {
+        key: `${r}-${i+1}`,
+        points: `${xLeft},${y2} ${xMid},${y2} ${xMid},${yn} ${xRight},${yn}`,
+        fill: "none", stroke: T.border, strokeWidth: "1"
+      }));
     }
   });
   return /*#__PURE__*/React.createElement("svg", {
@@ -3736,26 +3723,29 @@ function KnockoutTab({
   liveOdds
 }) {
   // All 16 R32 matches hardcoded by team name — exact order matches ESPN bracket (W1-W16)
+  // R32 in PAIRED visual order — adjacent pairs feed same R16 slot → clean connectors
+  // Pair 0-1: W1vsW3 → R16[0] | Pair 2-3: W2vsW5 → R16[1] | etc.
   const R32_HARDCODED = [
-    { t1:'Germany',    t2:'Paraguay',               city:'Foxborough',   date:'2026-06-29T21:00:00Z' }, // W1
+    { t1:'Germany',    t2:'Paraguay',               city:'Foxborough',      date:'2026-06-29T21:00:00Z' }, // W1
+    { t1:'South Africa', t2:'Canada',               city:'Los Angeles',     date:'2026-06-28T20:00:00Z' }, // W3
     { t1:'France',     t2:'Sweden',                 city:'East Rutherford', date:'2026-06-30T22:00:00Z' }, // W2
-    { t1:'South Africa', t2:'Canada',               city:'Los Angeles',  date:'2026-06-28T20:00:00Z' }, // W3
-    { t1:'Netherlands', t2:'Morocco',               city:'Monterrey',    date:'2026-06-30T02:00:00Z' }, // W4
-    { t1:'Portugal',   t2:'Croatia',                city:'Toronto',      date:'2026-07-03T00:00:00Z' }, // W5
-    { t1:'Spain',      t2:'Austria',                city:'Los Angeles',  date:'2026-07-02T20:00:00Z' }, // W6
-    { t1:'USA',        t2:'Bosnia and Herzegovina', city:'San Francisco', date:'2026-07-02T01:00:00Z' }, // W7
-    { t1:'Belgium',    t2:'Senegal',                city:'Seattle',      date:'2026-07-01T21:00:00Z' }, // W8
-    { t1:'Brazil',     t2:'Japan',                  city:'Houston',      date:'2026-06-29T17:00:00Z' }, // W9
-    { t1:'Ivory Coast', t2:'Norway',                city:'Dallas',       date:'2026-06-30T18:00:00Z' }, // W10
-    { t1:'Mexico',     t2:'Ecuador',                city:'Mexico City',  date:'2026-07-01T02:00:00Z' }, // W11
-    { t1:'England',    t2:'DR Congo',               city:'Atlanta',      date:'2026-07-01T17:00:00Z' }, // W12
-    { t1:'Argentina',  t2:'Cape Verde',             city:'Miami',        date:null }, // W13 - TBD
-    { t1:'Australia',  t2:'Egypt',                  city:'Dallas',       date:'2026-07-03T19:00:00Z' }, // W14
-    { t1:'Switzerland', t2:'Algeria',               city:'Dallas',       date:null }, // W15 - TBD
-    { t1:'Colombia',   t2:'Ghana',                  city:'Kansas City',  date:null }, // W16 - TBD
+    { t1:'Portugal',   t2:'Croatia',                city:'Toronto',         date:'2026-07-03T00:00:00Z' }, // W5
+    { t1:'Netherlands', t2:'Morocco',               city:'Monterrey',       date:'2026-06-30T02:00:00Z' }, // W4
+    { t1:'Spain',      t2:'Austria',                city:'Los Angeles',     date:'2026-07-02T20:00:00Z' }, // W6
+    { t1:'USA',        t2:'Bosnia and Herzegovina', city:'San Francisco',   date:'2026-07-02T01:00:00Z' }, // W7
+    { t1:'Belgium',    t2:'Senegal',                city:'Seattle',         date:'2026-07-01T21:00:00Z' }, // W8
+    { t1:'Brazil',     t2:'Japan',                  city:'Houston',         date:'2026-06-29T17:00:00Z' }, // W9
+    { t1:'Ivory Coast', t2:'Norway',                city:'Dallas',          date:'2026-06-30T18:00:00Z' }, // W10
+    { t1:'Mexico',     t2:'Ecuador',                city:'Mexico City',     date:'2026-07-01T02:00:00Z' }, // W11
+    { t1:'England',    t2:'DR Congo',               city:'Atlanta',         date:'2026-07-01T17:00:00Z' }, // W12
+    { t1:'Argentina',  t2:'Cape Verde',             city:'Miami',           date:'2026-07-04T00:00:00Z' }, // W13
+    { t1:'Switzerland', t2:'Algeria',               city:'Dallas',          date:'2026-07-04T00:00:00Z' }, // W15
+    { t1:'Australia',  t2:'Egypt',                  city:'Dallas',          date:'2026-07-03T19:00:00Z' }, // W14
+    { t1:'Colombia',   t2:'Ghana',                  city:'Kansas City',     date:'2026-07-04T23:00:00Z' }, // W16
   ];
   // R16 pairings: ESPN W1vsW3,W2vsW5,W4vsW6,W7vsW8,W9vsW10,W11vsW12,W13vsW15,W14vsW16
-  const R16_SOURCES = [[0,2],[1,4],[3,5],[6,7],[8,9],[10,11],[12,14],[13,15]];
+  // R16 uses adjacent pairs since R32_HARDCODED is now in paired visual order
+  const R16_SOURCES = [[0,1],[2,3],[4,5],[6,7],[8,9],[10,11],[12,13],[14,15]];
   const slotWinner = slot => {
     if (!slot || !slot.completed || slot.s1 === null || slot.s2 === null) return null;
     if (slot.s1 > slot.s2) return slot.t1;
@@ -3810,15 +3800,16 @@ function KnockoutTab({
         t1proj = prevSlots ? slotWinner(prevSlots[i * 2]) || 'TBD' : 'TBD';
         t2proj = prevSlots ? slotWinner(prevSlots[i * 2 + 1]) || 'TBD' : 'TBD';
       }
-      const espn = t1proj !== 'TBD' && t2proj !== 'TBD' && real.find(m => {
-        const a1 = normalizeTeam(m.t1 || ''),
-          a2 = normalizeTeam(m.t2 || '');
-        const b1 = normalizeTeam(t1proj),
-          b2 = normalizeTeam(t2proj);
+      // Match by team names if both known; fall back to i-th date-sorted ESPN match for city/date
+      const espnByTeam = t1proj !== 'TBD' && t2proj !== 'TBD' ? real.find(m => {
+        const a1 = normalizeTeam(m.t1 || ''), a2 = normalizeTeam(m.t2 || '');
+        const b1 = normalizeTeam(t1proj), b2 = normalizeTeam(t2proj);
         return a1 === b1 && a2 === b2 || a1 === b2 && a2 === b1;
-      });
-      return espn ? {
-        ...espn,
+      }) : null;
+      const realSorted = [...real].sort((a,b) => new Date(a.date||0) - new Date(b.date||0));
+      const espnForCity = espnByTeam || realSorted[i];
+      return espnByTeam ? {
+        ...espnByTeam,
         t1: t1proj,
         t2: t2proj
       } : {
@@ -3827,7 +3818,9 @@ function KnockoutTab({
         s1: null,
         s2: null,
         completed: false,
-        state: 'pre'
+        state: 'pre',
+        city: espnForCity ? espnForCity.city : null,
+        date: espnForCity ? espnForCity.date : null
       };
     });
   };
