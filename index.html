@@ -3848,7 +3848,13 @@ function KnockoutTab({
   const knockoutLosers = new Set();
   knockoutEvents.forEach(e => {
     if (e.completed && e.s1 !== null && e.s2 !== null) {
-      if (e.s1 > e.s2) knockoutLosers.add(e.t2);else if (e.s2 > e.s1) knockoutLosers.add(e.t1);
+      if (e.s1 > e.s2) knockoutLosers.add(e.t2);
+      else if (e.s2 > e.s1) knockoutLosers.add(e.t1);
+      else if (e.p1 !== null && e.p1 !== undefined && e.p2 !== null && e.p2 !== undefined) {
+        // Regulation tied — decided by penalty shootout
+        if (e.p1 > e.p2) knockoutLosers.add(e.t2);
+        else if (e.p2 > e.p1) knockoutLosers.add(e.t1);
+      }
     }
   });
   const remaining = PLAYERS.reduce((acc, p) => {
