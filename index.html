@@ -14,8 +14,7 @@
 window.onerror=function(m,s,l,c,e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:monospace;font-size:12px;background:#fee;border:2px solid #c00;margin:16px;border-radius:6px;white-space:pre-wrap">&#x274C; '+m+'\n'+(e&&e.stack||'')+'</div>';};
 if(!window.storage){var _m={};window.storage={get:function(k){return _m[k]!==undefined?Promise.resolve({key:k,value:_m[k]}):Promise.reject(new Error('nf'))},set:function(k,v){_m[k]=v;return Promise.resolve({key:k,value:v})},delete:function(k){delete _m[k];return Promise.resolve({key:k,deleted:true})},list:function(){return Promise.resolve({keys:Object.keys(_m)})}}}
 </script>
-<script>
-const {
+<script>const {
   useState,
   useEffect,
   useCallback,
@@ -1290,6 +1289,8 @@ function parseMatches(parsed) {
       t2,
       s1: m.score1 === undefined || m.score1 === null || m.score1 === '' ? null : Number(m.score1),
       s2: m.score2 === undefined || m.score2 === null || m.score2 === '' ? null : Number(m.score2),
+      p1: m.pens1 === undefined || m.pens1 === null || m.pens1 === '' ? null : Number(m.pens1),
+      p2: m.pens2 === undefined || m.pens2 === null || m.pens2 === '' ? null : Number(m.pens2),
       state,
       completed,
       statusDetail: m.status || ''
@@ -1439,6 +1440,8 @@ function parseESPNEvents(json) {
     const t2 = normalizeTeam(away.team && away.team.displayName);
     const venue = comp.venue || {};
     const city = venue.address && (venue.address.city || venue.address.state) || venue.city || null;
+    const p1 = home.shootoutScore !== undefined && home.shootoutScore !== null && home.shootoutScore !== '' ? Number(home.shootoutScore) : null;
+    const p2 = away.shootoutScore !== undefined && away.shootoutScore !== null && away.shootoutScore !== '' ? Number(away.shootoutScore) : null;
     return {
       id: `${stage}|${group || round}|${t1}|${t2}`,
       stage,
@@ -1450,6 +1453,7 @@ function parseESPNEvents(json) {
       city,
       s1: home.score !== undefined && home.score !== null && home.score !== '' ? Number(home.score) : null,
       s2: away.score !== undefined && away.score !== null && away.score !== '' ? Number(away.score) : null,
+      p1, p2,
       state: statusType.state || 'pre',
       completed: !!statusType.completed,
       statusDetail: statusType.shortDetail || statusType.detail || ''
@@ -3562,6 +3566,8 @@ function BracketCard({
   t2,
   s1,
   s2,
+  p1,
+  p2,
   completed,
   isLive,
   city,
@@ -3570,18 +3576,22 @@ function BracketCard({
   const isTBD = t => !t || t === 'TBD' || t.includes('TBD') || t.includes('Place') || !ALL_TEAMS.includes(t);
   const o1 = PICKS[t1] || PICKS[normalizeTeam(t1 || '')] || null;
   const o2 = PICKS[t2] || PICKS[normalizeTeam(t2 || '')] || null;
-  const winner = completed && s1 !== null && s2 !== null ? s1 > s2 ? t1 : s2 > s1 ? t2 : null : null;
+  const winner = completed && s1 !== null && s2 !== null
+    ? (s1 > s2 ? t1 : s2 > s1 ? t2 : (p1 !== null && p2 !== null ? (p1 > p2 ? t1 : p2 > p1 ? t2 : null) : null))
+    : null;
   const bothKnown = !isTBD(t1) && !isTBD(t2);
   const probs = bothKnown ? matchWinProb(t1, t2) : null;
   const rows = [{
     team: isTBD(t1) ? null : t1,
     own: o1,
     score: s1,
+    pens: p1,
     prob: probs ? probs[0] : null
   }, {
     team: isTBD(t2) ? null : t2,
     own: o2,
     score: s2,
+    pens: p2,
     prob: probs ? probs[1] : null
   }];
   // Only show score when match is live or completed — never show 0 for a pre-match slot
@@ -3610,6 +3620,7 @@ function BracketCard({
     team,
     own,
     score,
+    pens,
     prob
   }, idx) => {
     const isWinner = completed && team && winner === team;
@@ -3667,7 +3678,9 @@ function BracketCard({
         flexShrink: 0,
         color: isWinner ? T.textPrimary : T.textFaint
       }
-    }, score));
+    }, score, pens !== null && pens !== undefined && /*#__PURE__*/React.createElement("span", {
+      style: { fontSize: 9, fontWeight: 600, marginLeft: 2 }
+    }, "(", pens, ")")));
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '1px 7px 3px',
@@ -3750,6 +3763,11 @@ function KnockoutTab({
     if (!slot || !slot.completed || slot.s1 === null || slot.s2 === null) return null;
     if (slot.s1 > slot.s2) return slot.t1;
     if (slot.s2 > slot.s1) return slot.t2;
+    // Regulation tied — check penalty shootout
+    if (slot.p1 !== null && slot.p1 !== undefined && slot.p2 !== null && slot.p2 !== undefined) {
+      if (slot.p1 > slot.p2) return slot.t1;
+      if (slot.p2 > slot.p1) return slot.t2;
+    }
     return null;
   };
   const getRoundSlots = round => {
@@ -3769,7 +3787,9 @@ function KnockoutTab({
           t1: hc.t1,
           t2: hc.t2,
           s1: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? match.s2 : match.s1,
-          s2: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? match.s1 : match.s2
+          s2: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? match.s1 : match.s2,
+          p1: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? (match.p2 ?? null) : (match.p1 ?? null),
+          p2: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? (match.p1 ?? null) : (match.p2 ?? null)
         } : {
           ...hc,
           s1: null,
@@ -4090,6 +4110,8 @@ function KnockoutTab({
       t2: m.t2,
       s1: m.s1,
       s2: m.s2,
+      p1: m.p1,
+      p2: m.p2,
       completed: m.completed,
       isLive: m.state === 'in',
       city: m.city,
@@ -4111,6 +4133,8 @@ function KnockoutTab({
     t2: thirdPlaceMatch.t2,
     s1: thirdPlaceMatch.s1,
     s2: thirdPlaceMatch.s2,
+    p1: thirdPlaceMatch.p1,
+    p2: thirdPlaceMatch.p2,
     completed: thirdPlaceMatch.completed,
     isLive: thirdPlaceMatch.state === 'in'
   })));
@@ -4419,7 +4443,6 @@ function App() {
 }
 var root=ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(ErrorBoundary,null,React.createElement(App)));
-
 </script>
 </body>
 </html>
