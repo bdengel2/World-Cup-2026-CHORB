@@ -1377,15 +1377,42 @@ async function fetchFromAISearch() {
 // We fetch multiple specific date windows in parallel to cover the entire tournament,
 // then deduplicate by event ID. This recovers completed matches from any point in time.
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=100&dates=';
-const ESPN_DATE_WINDOWS = ['20260611-20260616',
-// Group stage round 1
-'20260617-20260622',
-// Group stage round 2
-'20260623-20260627',
-// Group stage round 3
-'20260628-20260719' // Knockout rounds
+const ESPN_DATE_WINDOWS = [
+  '20260611-20260616', // Group stage round 1
+  '20260617-20260622', // Group stage round 2
+  '20260623-20260627', // Group stage round 3
+  '20260628-20260703', // R32 (Jun 28 – Jul 3)
+  '20260704-20260708', // R32 end + R16 (Colombia/Ghana Jul 4 UTC + R16 Jul 4-7)
+  '20260709-20260719', // QF / SF / Final (Jul 9–19)
 ];
 const ESPN_STANDINGS_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings';
+
+// Confirmed knockout results — fallback when ESPN scoreboard doesn't return a match.
+// Keyed by "t1|t2" matching R32_HARDCODED order. p1/p2 only set for penalty shootouts.
+const KNOWN_KO_RESULTS = {
+  'Germany|Paraguay':               { s1:1, s2:1, p1:3, p2:4 },  // Paraguay wins pens
+  'France|Sweden':                  { s1:3, s2:0 },
+  'South Africa|Canada':            { s1:0, s2:1 },
+  'Netherlands|Morocco':            { s1:1, s2:1, p1:2, p2:3 },  // Morocco wins pens
+  'Portugal|Croatia':               { s1:2, s2:1 },
+  'Spain|Austria':                  { s1:3, s2:0 },
+  'USA|Bosnia and Herzegovina':     { s1:2, s2:0 },
+  'Belgium|Senegal':                { s1:3, s2:2 },
+  'Brazil|Japan':                   { s1:2, s2:1 },
+  'Ivory Coast|Norway':             { s1:1, s2:2 },
+  'Mexico|Ecuador':                 { s1:2, s2:0 },
+  'England|DR Congo':               { s1:2, s2:1 },
+  'Argentina|Cape Verde':           { s1:3, s2:2 },
+  'Australia|Egypt':                { s1:1, s2:1, p1:2, p2:4 }, // Egypt wins pens
+  'Switzerland|Algeria':            { s1:2, s2:0 },
+  'Colombia|Ghana':                 { s1:1, s2:0 },
+};
+// Confirmed R16 results — keyed by projected t1proj|t2proj team pair.
+const KNOWN_R16_RESULTS = {
+  'Paraguay|France':  { s1:0, s2:1 },
+  'Canada|Morocco':   { s1:0, s2:3 },
+};
+
 const KO_DATE_RANGES = {
   R32:   ['2026-06-28T00:00:00', '2026-07-04T06:00:00'], // ends before first R16 kick-off
   R16:   ['2026-07-04T06:00:00', '2026-07-07T23:59:59'],
@@ -3783,7 +3810,7 @@ function SBView({sbR32Teams, sbR16Teams, sbQFTeams, sbSFTeams, sbFinalTeams, sbC
   const block = (team, h, round) => {
     const advanced = team && (tfr[team] !== undefined ? tfr[team] : 0) > round;
     const showName = team && tfr[team] === round;
-    const w = round === 0 && advanced ? COL_W + G : COL_W;
+    const w = (round < 5 && advanced) ? COL_W + G : COL_W; // bridge gap to next column for all advancing rounds
     return /*#__PURE__*/React.createElement('div', {
       style: {
         height: h, width: w, background: color(team),
@@ -3890,13 +3917,19 @@ function KnockoutTab({
           s2: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? match.s1 : match.s2,
           p1: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? (match.p2 ?? null) : (match.p1 ?? null),
           p2: (normalizeTeam(match.t1||'') !== normalizeTeam(hc.t1)) ? (match.p1 ?? null) : (match.p2 ?? null)
-        } : {
-          ...hc,
-          s1: null,
-          s2: null,
-          completed: false,
-          state: 'pre'
-        };
+        } : (() => {
+          const _kr = KNOWN_KO_RESULTS[`${hc.t1}|${hc.t2}`];
+          return {
+            ...hc,
+            s1: _kr ? _kr.s1 : null,
+            s2: _kr ? _kr.s2 : null,
+            p1: _kr && _kr.p1 !== undefined ? _kr.p1 : null,
+            p2: _kr && _kr.p2 !== undefined ? _kr.p2 : null,
+            completed: !!_kr,
+            state: _kr ? 'post' : 'pre',
+            statusDetail: _kr ? 'FT' : ''
+          };
+        })();
       });
     }
     // R16 uses ESPN non-adjacent pairs; QF/SF/Final use adjacent pairs
@@ -3928,6 +3961,8 @@ function KnockoutTab({
       }) : null;
       const realSorted = [...real].sort((a,b) => new Date(a.date||0) - new Date(b.date||0));
       const espnForCity = espnByTeam || realSorted[i];
+      const _kr16 = KNOWN_R16_RESULTS[`${t1proj}|${t2proj}`] || KNOWN_R16_RESULTS[`${t2proj}|${t1proj}`];
+      const _r16Swapped = !KNOWN_R16_RESULTS[`${t1proj}|${t2proj}`] && !!_kr16;
       return espnByTeam ? {
         ...espnByTeam,
         t1: t1proj,
@@ -3935,10 +3970,13 @@ function KnockoutTab({
       } : {
         t1: t1proj,
         t2: t2proj,
-        s1: null,
-        s2: null,
-        completed: false,
-        state: 'pre',
+        s1: _kr16 ? (_r16Swapped ? _kr16.s2 : _kr16.s1) : null,
+        s2: _kr16 ? (_r16Swapped ? _kr16.s1 : _kr16.s2) : null,
+        p1: _kr16 && _kr16.p1 !== undefined ? (_r16Swapped ? _kr16.p2 : _kr16.p1) : null,
+        p2: _kr16 && _kr16.p2 !== undefined ? (_r16Swapped ? _kr16.p1 : _kr16.p2) : null,
+        completed: !!_kr16,
+        state: _kr16 ? 'post' : 'pre',
+        statusDetail: _kr16 ? 'FT' : '',
         city: (espnForCity ? espnForCity.city : null) || (ROUND_SCHED[round] && ROUND_SCHED[round][i] ? ROUND_SCHED[round][i].city : null),
         date: (espnForCity ? espnForCity.date : null) || (ROUND_SCHED[round] && ROUND_SCHED[round][i] ? ROUND_SCHED[round][i].date : null)
       };
@@ -3952,11 +3990,23 @@ function KnockoutTab({
       if (e.s1 > e.s2) knockoutLosers.add(e.t2);
       else if (e.s2 > e.s1) knockoutLosers.add(e.t1);
       else if (e.p1 !== null && e.p1 !== undefined && e.p2 !== null && e.p2 !== undefined) {
-        // Regulation tied — decided by penalty shootout
         if (e.p1 > e.p2) knockoutLosers.add(e.t2);
         else if (e.p2 > e.p1) knockoutLosers.add(e.t1);
       }
     }
+  });
+  // Fallback: apply confirmed results from hardcoded tables
+  // (covers matches ESPN scoreboard fails to return)
+  Object.entries(KNOWN_KO_RESULTS).forEach(([key, r]) => {
+    const [t1k, t2k] = key.split('|');
+    const loser = r.s1 > r.s2 ? t2k : r.s2 > r.s1 ? t1k
+      : (r.p1 != null && r.p2 != null ? (r.p1 > r.p2 ? t2k : t1k) : null);
+    if (loser) knockoutLosers.add(loser);
+  });
+  Object.entries(KNOWN_R16_RESULTS).forEach(([key, r]) => {
+    const [t1k, t2k] = key.split('|');
+    const loser = r.s1 > r.s2 ? t2k : r.s2 > r.s1 ? t1k : null;
+    if (loser) knockoutLosers.add(loser);
   });
   // Simplified bracket data
   const _toTeam = t => (!t || t === 'TBD' || !ALL_TEAMS.includes(normalizeTeam(t))) ? null : t;
