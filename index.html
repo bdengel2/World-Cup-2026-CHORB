@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>CHORB FIFA 2026</title>
 <link rel="icon" type="image/png" href="./favicon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -12,9 +13,10 @@
 <div id="root"></div>
 <script>
 window.onerror=function(m,s,l,c,e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:monospace;font-size:12px;background:#fee;border:2px solid #c00;margin:16px;border-radius:6px;white-space:pre-wrap">&#x274C; '+m+'\n'+(e&&e.stack||'')+'</div>';};
-if(!window.storage){var _m={};window.storage={get:function(k){return _m[k]!==undefined?Promise.resolve({key:k,value:_m[k]}):Promise.reject(new Error('nf'))},set:function(k,v){_m[k]=v;return Promise.resolve({key:k,value:v})},delete:function(k){delete _m[k];return Promise.resolve({key:k,deleted:true})},list:function(){return Promise.resolve({keys:Object.keys(_m)})}}}
+(function(){if(window.storage)return;var _m={};window.storage={get:function(k){return _m[k]!==undefined?Promise.resolve({key:k,value:_m[k]}):Promise.reject(new Error('nf'))},set:function(k,v){_m[k]=v;return Promise.resolve({key:k,value:v})},delete:function(k){delete _m[k];return Promise.resolve({key:k,deleted:true})},list:function(){return Promise.resolve({keys:Object.keys(_m)})}};})();
 </script>
-<script>const {
+<script>
+const {
   useState,
   useEffect,
   useCallback,
@@ -3051,5 +3053,3 @@ const mathProb = (team, stats, standings, groupEvents) => {
   return Math.min(0.97, Math.max(0.02, base + s.pts * 0.02));
 };
 function ChartsTab({
-  groupEvents,
-  stats,
