@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>CHORB FIFA 2026</title>
 <link rel="icon" type="image/png" href="./favicon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -3790,6 +3789,214 @@ const ROUND_SCHED = {
   ],
 };
 
+
+function CBracket({sbR32Teams, sbR16Teams, sbQFTeams, sbSFTeams, sbFinalTeams, sbChampion}) {
+  const tfr = {};
+  sbR32Teams.forEach(t => { if(t) tfr[t] = 0; });
+  sbR16Teams.forEach(t => { if(t) tfr[t] = 1; });
+  sbQFTeams.forEach(t => { if(t) tfr[t] = 2; });
+  sbSFTeams.forEach(t => { if(t) tfr[t] = 3; });
+  sbFinalTeams.forEach(t => { if(t) tfr[t] = 4; });
+  if(sbChampion) tfr[sbChampion] = 5;
+
+  const teamColor = t => {
+    if(!t) return '#d5d5d5';
+    const owner = PICKS[t] || PICKS[normalizeTeam(t || '')] || null;
+    return (owner && PC[owner]) ? PC[owner].hex : '#d5d5d5';
+  };
+
+  const SIZE = 800, CX = 400, CY = 400;
+  const RAD = d => d * Math.PI / 180;
+  const START = -90;
+
+  // Rings: directly adjacent
+  const RINGS = [
+    { r1:302, r2:380, round:0, fs:7,   outer:true  },
+    { r1:224, r2:302, round:1, fs:8,   outer:true  },
+    { r1:155, r2:224, round:2, fs:9,   outer:false },
+    { r1:93,  r2:155, round:3, fs:11,  outer:false },
+    { r1:40,  r2:93,  round:4, fs:12,  outer:false },
+  ];
+  const WIN_R = 40;
+  const BG = '#F2F1EA';
+  const SW = 1.5;
+
+  const pt  = (r,a) => `${(CX+r*Math.cos(a)).toFixed(2)} ${(CY+r*Math.sin(a)).toFixed(2)}`;
+  const RADf = a => RAD(a);
+
+  // Filled donut sector (no stroke) — used for arc fills AND connectors
+  const sectorPath = (r1, r2, sDeg, eDeg) => {
+    const s = RADf(sDeg), e = RADf(eDeg);
+    const lg = (eDeg - sDeg >= 180) ? 1 : 0;
+    return `M${pt(r1,s)} A${r1} ${r1} 0 ${lg} 1 ${pt(r1,e)} L${pt(r2,e)} A${r2} ${r2} 0 ${lg} 0 ${pt(r2,s)}Z`;
+  };
+
+  // Radial text: never upside-down; outer rings rotate, inner rings stay horizontal
+  const textXF = (rMid, midDeg, outer) => {
+    if (!outer) {
+      return `translate(${(CX+rMid*Math.cos(RAD(midDeg))).toFixed(2)},${(CY+rMid*Math.sin(RAD(midDeg))).toFixed(2)})`;
+    }
+    const flip = midDeg > 90 && midDeg < 270;
+    return `translate(${CX},${CY}) rotate(${midDeg}) translate(${rMid},0) rotate(${flip ? 180 : 0})`;
+  };
+
+  const TWO_LINE = { 'Bosnia and Herzegovina': ['Bosnia &', 'Herzegovina'] };
+  const roundTeams = [sbR32Teams, sbR16Teams, sbQFTeams, sbSFTeams, sbFinalTeams];
+
+  const fillEls = [], connEls = [], divEls = [], textEls = [];
+
+  // ── 1. Arc fills (NO stroke) ───────────────────────────────────────────
+  RINGS.forEach(({ r1, r2, round, fs, outer }) => {
+    const teams = roundTeams[round] || [];
+    const count = teams.length;
+    const degPer = 360 / count;
+    const rMid = (r1 + r2) / 2;
+
+    teams.forEach((team, i) => {
+      const sDeg = START + i * degPer;
+      const eDeg = sDeg + degPer;
+      const mid  = sDeg + degPer / 2;
+
+      fillEls.push(/*#__PURE__*/React.createElement('path', {
+        key: `f${round}-${i}`,
+        d: sectorPath(r1, r2, sDeg, eDeg),
+        fill: teamColor(team),
+        stroke: 'none'
+      }));
+
+      if (!team || tfr[team] !== round) return;
+      const lines = TWO_LINE[team] || [team];
+      const xf = textXF(rMid, mid, outer);
+
+      if (lines.length === 1) {
+        textEls.push(/*#__PURE__*/React.createElement('text', {
+          key: `t${round}-${i}`,
+          transform: xf,
+          textAnchor: 'middle', dominantBaseline: 'central',
+          fontSize: fs, fontWeight: 700, fill: 'white',
+          style: { fontFamily: 'sans-serif', pointerEvents: 'none' }
+        }, lines[0]));
+      } else {
+        const lh = fs * 1.25;
+        textEls.push(/*#__PURE__*/React.createElement('text', {
+          key: `t${round}-${i}`,
+          transform: xf,
+          textAnchor: 'middle',
+          fontSize: fs, fontWeight: 700, fill: 'white',
+          style: { fontFamily: 'sans-serif', pointerEvents: 'none' }
+        },
+          lines.map((line, li) => /*#__PURE__*/React.createElement('tspan', {
+            key: li, x: 0,
+            dy: li === 0 ? `${-lh*(lines.length-1)/2}px` : `${lh}px`
+          }, line))
+        ));
+      }
+    });
+  });
+
+  // ── 2. Winner circle (fill, no stroke) ────────────────────────────────
+  fillEls.push(/*#__PURE__*/React.createElement('circle', {
+    key: 'wc', cx: CX, cy: CY, r: WIN_R, fill: teamColor(sbChampion), stroke: 'none'
+  }));
+  fillEls.push(/*#__PURE__*/React.createElement('image', {
+    key: 'wfav', href: './favicon.png',
+    x: CX-20, y: CY-20, width: 40, height: 40, opacity: 0.7
+  }));
+  if (sbChampion) {
+    textEls.push(/*#__PURE__*/React.createElement('text', {
+      key: 'wt', x: CX, y: CY,
+      textAnchor: 'middle', dominantBaseline: 'central',
+      fontSize: 11, fontWeight: 800, fill: 'white',
+      style: { fontFamily: 'sans-serif', pointerEvents: 'none' }
+    }, sbChampion));
+  }
+
+  // ── 3. Ring-boundary circles (white) ──────────────────────────────────
+  [302, 224, 155, 93, 40].forEach(r =>
+    connEls.push(/*#__PURE__*/React.createElement('circle', {
+      key: `bdr${r}`, cx: CX, cy: CY, r,
+      fill: 'none', stroke: BG, strokeWidth: SW
+    }))
+  );
+
+  // ── 4. Colored connectors (FILLED donut sectors, no stroke) ───────────
+  // Drawn over the white ring circles — covers only the advancing team's
+  // angular slot in the OUTER ring, so only their block connects.
+  // Radial dividers (step 5, drawn last) will remain white on top.
+  const boundaries = [
+    { r: 302, inner: sbR16Teams,   outer: sbR32Teams   },
+    { r: 224, inner: sbQFTeams,    outer: sbR16Teams   },
+    { r: 155, inner: sbSFTeams,    outer: sbQFTeams    },
+    { r: 93,  inner: sbFinalTeams, outer: sbSFTeams    },
+    { r: 40,  inner: [sbChampion], outer: sbFinalTeams },
+  ];
+  boundaries.forEach(({ r, inner, outer }) => {
+    const degPer = 360 / outer.length;
+    inner.forEach(winner => {
+      if (!winner || winner === 'TBD') return;
+      const idx = outer.indexOf(winner);
+      if (idx < 0) return;
+      const sDeg = START + idx * degPer;
+      const eDeg = sDeg + degPer;
+      connEls.push(/*#__PURE__*/React.createElement('path', {
+        key: `conn-${r}-${winner}`,
+        d: sectorPath(r - SW, r + SW, sDeg, eDeg),
+        fill: teamColor(winner),
+        stroke: 'none'
+      }));
+    });
+  });
+
+  // ── 5. Radial dividers (white lines) — drawn LAST so they always win ──
+  // One divider per arc boundary angle within each ring.
+  RINGS.forEach(({ r1, r2, round }) => {
+    const count = roundTeams[round].length;
+    const degPer = 360 / count;
+    for (let i = 0; i < count; i++) {
+      const a = RADf(START + i * degPer);
+      divEls.push(/*#__PURE__*/React.createElement('line', {
+        key: `div-${round}-${i}`,
+        x1: (CX + r1*Math.cos(a)).toFixed(2), y1: (CY + r1*Math.sin(a)).toFixed(2),
+        x2: (CX + r2*Math.cos(a)).toFixed(2), y2: (CY + r2*Math.sin(a)).toFixed(2),
+        stroke: BG, strokeWidth: SW
+      }));
+    }
+  });
+  // Outer edge of R32 ring
+  divEls.push(/*#__PURE__*/React.createElement('circle', {
+    key: 'outer-edge', cx: CX, cy: CY, r: 380,
+    fill: 'none', stroke: BG, strokeWidth: SW
+  }));
+
+  // ── Legend ─────────────────────────────────────────────────────────────
+  const legend = /*#__PURE__*/React.createElement('div', {
+    style: { display:'flex', gap:14, justifyContent:'center', marginTop:8, flexWrap:'wrap' }
+  }, PLAYERS.map(p => /*#__PURE__*/React.createElement('div', {
+    key: p, style: { display:'flex', alignItems:'center', gap:5,
+                     fontSize:9, fontWeight:600, color: T.textSecondary }
+  },
+    /*#__PURE__*/React.createElement('div', {
+      style: { width:10, height:10, borderRadius:2,
+               background: PC[p] ? PC[p].hex : '#ccc', flexShrink:0 }
+    }),
+    p + ' (' + (OWNER_INITIALS[p]||p) + ')'
+  )));
+
+  return /*#__PURE__*/React.createElement('div', { style: { marginTop:12 } },
+    /*#__PURE__*/React.createElement('svg', {
+      viewBox: `0 0 ${SIZE} ${SIZE}`,
+      style: { display:'block', width:'100%', maxWidth:SIZE, margin:'0 auto' }
+    },
+      ...fillEls,   // arc fills + winner circle + favicon
+      ...connEls,   // ring boundary circles (white) + colored connectors
+      ...divEls,    // radial dividers + outer edge (always white, drawn last)
+      ...textEls    // labels on top of everything
+    ),
+    legend
+  );
+}
+
+
 function SBView({sbR32Teams, sbR16Teams, sbQFTeams, sbSFTeams, sbFinalTeams, sbChampion}) {
   const tfr = {};
   sbR32Teams.forEach(t => { if(t) tfr[t] = 0; });
@@ -4310,7 +4517,7 @@ function KnockoutTab({
             date: m.date
           })));
         }))))
-      : /*#__PURE__*/React.createElement(SBView, {
+      : /*#__PURE__*/React.createElement(CBracket, {
           sbR32Teams, sbR16Teams, sbQFTeams, sbSFTeams, sbFinalTeams, sbChampion
         })
   ), thirdPlaceMatch && /*#__PURE__*/React.createElement("div", {
